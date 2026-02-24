@@ -8,11 +8,12 @@ import { useParams } from 'react-router-dom';
 interface DashboardProps {
   onNavigate: (screen: string) => void;
   onViewInsight: (id: string) => void;
+  mock?: boolean;
 }
 
 export function Dashboard({ onNavigate, onViewInsight}: DashboardProps) {
   const {  mock } = useParams<DashboardProps>();
-
+  console.log("mock",mock);
   const recentInsights = mock ? mockInsights.slice(0, 3) : [];
   const trendingInsights = mock ? getTrendingInsights() : [];
 

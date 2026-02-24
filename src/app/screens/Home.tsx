@@ -5,10 +5,13 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { getTrendingInsights, getRecentInsights, getTopInsights } from '../data/mockData';
+import { useParams } from 'react-router-dom';
+
 
 interface HomeProps {
   onViewInsight: (id: string) => void;
   onSearch: (query: string) => void;
+  mock?: boolean;
 }
 
 type TimeVintage = '1d' | '7d' | '30d' | '90d';
@@ -24,7 +27,8 @@ const timeVintageLabels = {
 export function Home({ onViewInsight, onSearch }: HomeProps) {
   const [category, setCategory] = useState<Category>('trending');
   const [timeVintage, setTimeVintage] = useState<TimeVintage>('7d');
-
+  const {  mock } = useParams<HomeProps>();
+  console.log("mock",mock);
   const getInsightsForCategory = () => {
     const days = timeVintage === '1d' ? 1 : timeVintage === '7d' ? 7 : timeVintage === '30d' ? 30 : 90;
     

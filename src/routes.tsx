@@ -30,7 +30,35 @@ export const router = createBrowserRouter([
     ),
   },
   {
+    path: ":mock/dashboard/:screen",
+    element: (
+        <Dashboard/>
+    ),
+  },
+  {
+    path: ":mock/dashboard/insight/:insightId",
+    element: (
+        <Dashboard/>
+    ),
+  },
+  {
     path: "/dashboard",
+    element: (
+      <AuthGate>
+        <Dashboard />
+      </AuthGate>
+    ),
+  },
+  {
+    path: "/dashboard/:screen",
+    element: (
+      <AuthGate>
+        <Dashboard />
+      </AuthGate>
+    ),
+  },
+  {
+    path: "/insight/:insightId",
     element: (
       <AuthGate>
         <Dashboard />

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Home } from './screens/Home';
 import { DataSourceConnection } from './screens/DataSourceConnection';
@@ -14,6 +14,9 @@ import { Help } from './screens/Help';
 import { ManualEntry } from './screens/ManualEntry';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
+import { useParams } from 'react-router-dom';
+import { signOut } from 'aws-amplify/auth';
+import { useLocation, useNavigate } from 'react-router';
 
 type Screen = 
   | 'home'
@@ -30,33 +33,98 @@ type Screen =
   | 'help'
   | 'settings';
 
+const validScreens: Screen[] = [
+  'home',
+  'ingestion',
+  'upload-progress',
+  'insight-review',
+  'final-validation',
+  'library',
+  'discovery',
+  'search-results',
+  'insight-detail',
+  'my-library',
+  'manual-entry',
+  'help',
+  'settings',
+];
+
+const isScreen = (value: string | undefined): value is Screen =>
+  !!value && validScreens.includes(value as Screen);
+
 export default function Dashboard() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { mock, insightId, screen } = useParams<{ mock?: string; insightId?: string; screen?: string }>();
+  const baseDashboardPath = mock ? `/${mock}/dashboard` : '/dashboard';
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedInsightId, setSelectedInsightId] = useState<string>('');
 
+  const getScreenPath = (nextScreen: Screen) =>
+    nextScreen === 'home' ? baseDashboardPath : `${baseDashboardPath}/${nextScreen}`;
+
+  const navigateToScreen = (nextScreen: Screen) => {
+    setCurrentScreen(nextScreen);
+    navigate(getScreenPath(nextScreen));
+  };
+
+  useEffect(() => {
+    if (insightId) {
+      setSelectedInsightId(insightId);
+      setCurrentScreen('insight-detail');
+      return;
+    }
+
+    if (isScreen(screen)) {
+      setCurrentScreen(screen);
+      if (screen === 'search-results') {
+        const params = new URLSearchParams(location.search);
+        setSearchQuery(params.get('q') ?? '');
+      }
+      return;
+    }
+
+    if (!screen) {
+      setCurrentScreen('home');
+    }
+  }, [insightId, screen, location.search]);
+
   const handleNavigate = (screen: string) => {
-    setCurrentScreen(screen as Screen);
+    if (!isScreen(screen)) return;
+    navigateToScreen(screen);
   };
 
   const handleSelectSource = (sourceId: string) => {
     toast.success('Connecting to data source...');
-    setCurrentScreen('upload-progress');
+    navigateToScreen('upload-progress');
   };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
+    navigate(`${getScreenPath('search-results')}?q=${encodeURIComponent(query)}`);
     setCurrentScreen('search-results');
   };
 
   const handleViewInsight = (id: string) => {
     setSelectedInsightId(id);
     setCurrentScreen('insight-detail');
+    navigate(`/insight/${id}`);
   };
 
   const handlePublish = () => {
     toast.success('Insight published successfully!');
-    setCurrentScreen('discovery');
+    navigateToScreen('discovery');
+  };
+
+  const logout = async () => {
+    try {
+      await signOut();
+      toast.success('Logged out successfully');
+    } catch (error) {
+      console.error('Error signing out:', error);
+      toast.error('Unable to log out. Please try again.');
+    }
   };
 
   const renderScreen = () => {
@@ -68,21 +136,21 @@ export default function Dashboard() {
         return (
           <DataSourceConnection
             onSelectSource={handleSelectSource}
-            onManualEntry={() => setCurrentScreen('manual-entry')}
+            onManualEntry={() => navigateToScreen('manual-entry')}
           />
         );
       
       case 'upload-progress':
-        return <UploadProgress onContinue={() => setCurrentScreen('insight-review')} />;
+        return <UploadProgress onContinue={() => navigateToScreen('insight-review')} />;
       
       case 'insight-review':
-        return <InsightReview onApprove={() => setCurrentScreen('final-validation')} />;
+        return <InsightReview onApprove={() => navigateToScreen('final-validation')} />;
       
       case 'final-validation':
         return (
           <FinalValidation
             onPublish={handlePublish}
-            onEdit={() => setCurrentScreen('insight-review')}
+            onEdit={() => navigateToScreen('insight-review')}
           />
         );
       
@@ -90,7 +158,7 @@ export default function Dashboard() {
         return (
           <InsightLibrary
             onViewInsight={handleViewInsight}
-            onBack={() => setCurrentScreen('discovery')}
+            onBack={() => navigateToScreen('discovery')}
           />
         );
       
@@ -111,7 +179,9 @@ export default function Dashboard() {
         return (
           <InsightDetail
             insightId={selectedInsightId}
-            onBack={() => setCurrentScreen('search-results')}
+            onBack={() => {
+              navigateToScreen('search-results');
+            }}
             onViewRelated={handleViewInsight}
           />
         );
@@ -122,8 +192,8 @@ export default function Dashboard() {
       case 'manual-entry':
         return (
           <ManualEntry
-            onBack={() => setCurrentScreen('ingestion')}
-            onSubmit={() => setCurrentScreen('insight-review')}
+            onBack={() => navigateToScreen('ingestion')}
+            onSubmit={() => navigateToScreen('insight-review')}
           />
         );
       
@@ -146,8 +216,8 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="size-full flex bg-white">
-      <Sidebar currentScreen={currentScreen} onNavigate={handleNavigate} />
+    <div className="size-full flex bg-white relative">
+      <Sidebar currentScreen={currentScreen} onNavigate={handleNavigate} onLogout={logout} />
       {renderScreen()}
       <Toaster position="top-right" />
     </div>
