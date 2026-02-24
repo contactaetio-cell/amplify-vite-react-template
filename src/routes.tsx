@@ -3,6 +3,8 @@ import Landing from "./app/screens/Landing";
 import Product from "./app/screens/Product";
 import Login from "./app/screens/Login";
 import Dashboard from "./app/Dashboard";
+import AuthGate from "./AuthGate";
+
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -18,6 +20,10 @@ export const router = createBrowserRouter([
   },
   {
     path: "/dashboard",
-    Component: Dashboard,
+    element: (
+      <AuthGate>
+        <Dashboard />
+      </AuthGate>
+    ),
   },
 ]);
