@@ -13,9 +13,9 @@ export const auth = defineAuth({
         clientSecret: secret('GOOGLE_CLIENT_SECRET')
       },
       callbackUrls: [
-        'http://localhost:5000/dashboard',
+        'https://main.d27ng47b6pfw44.amplifyapp.com/dashboard',
       ],
-      logoutUrls: ['http://localhost:5000/']
+      logoutUrls: ['https://main.d27ng47b6pfw44.amplifyapp.com/']
     }
   },
   
