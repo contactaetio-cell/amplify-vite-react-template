@@ -19,6 +19,12 @@ export const router = createBrowserRouter([
     Component: Login,
   },
   {
+    path: ":mock/dashboard",
+    element: (
+        <Dashboard useMockData={true}/>
+    ),
+  },
+  {
     path: "/dashboard",
     element: (
       <AuthGate>

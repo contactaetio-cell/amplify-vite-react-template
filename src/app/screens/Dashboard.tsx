@@ -3,15 +3,18 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { TrendingUp, FileText, Users, Clock, ArrowRight } from 'lucide-react';
 import { mockInsights, getTrendingInsights } from '../data/mockData';
+import { useParams } from 'react-router-dom';
 
 interface DashboardProps {
   onNavigate: (screen: string) => void;
   onViewInsight: (id: string) => void;
 }
 
-export function Dashboard({ onNavigate, onViewInsight }: DashboardProps) {
-  const recentInsights = mockInsights.slice(0, 3);
-  const trendingInsights = getTrendingInsights();
+export function Dashboard({ onNavigate, onViewInsight}: DashboardProps) {
+  const {  mock } = useParams<DashboardProps>();
+
+  const recentInsights = mock ? mockInsights.slice(0, 3) : [];
+  const trendingInsights = mock ? getTrendingInsights() : [];
 
   return (
     <div className="flex-1 overflow-auto bg-gray-50">
