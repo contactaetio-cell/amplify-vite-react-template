@@ -27,29 +27,25 @@ export default function Login() {
   }
 
   return (
-    
-    <div className="min-h-screen bg-aetio-blue-950 flex flex-col">
-      <button
-      onClick={() => {console.log("mock"); navigate("/mock/dashboard");}}
-      style={{
-        backgroundColor: "white",
-        color: "black",
-        padding: "10px 16px",
-        border: "1px solid black",
-        borderRadius: "6px",
-        cursor: "pointer",
-        fontWeight: 500
-      }}
-    >
-      Go to mock screen
-    </button>
-      <div className="flex-1 flex items-center justify-center px-6 pb-16">
+   <div className="min-h-screen bg-aetio-blue-950 flex flex-col relative">
 
-        <Authenticator
-        socialProviders={["google"]}
-        signUpAttributes={["name"]}
-      />
-    </div>
-    </div>
+  <button
+    onClick={() => {
+      console.log("mock");
+      navigate("/mock/dashboard");
+    }}
+    className="absolute top-6 right-6 bg-white text-black px-4 py-2 border border-black rounded"
+  >
+    Go to mock screen
+  </button>
+
+  <div className="flex-1 flex items-center justify-center px-6 pb-16">
+    <Authenticator
+      socialProviders={["google"]}
+      signUpAttributes={["name"]}
+    />
+  </div>
+
+</div>
   );
 }
