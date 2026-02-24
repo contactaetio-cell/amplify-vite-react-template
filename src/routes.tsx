@@ -4,6 +4,7 @@ import Product from "./app/screens/Product";
 import Login from "./app/screens/Login";
 import Dashboard from "./app/Dashboard";
 import AuthGate from "./AuthGate";
+import ExportIcons from "./app/screens/ExportIcons";
 
 export const router = createBrowserRouter([
   {
@@ -19,9 +20,13 @@ export const router = createBrowserRouter([
     Component: Login,
   },
   {
+    path: "/export-icons",
+    Component: ExportIcons,
+  },
+  {
     path: ":mock/dashboard",
     element: (
-        <Dashboard useMockData={true}/>
+        <Dashboard/>
     ),
   },
   {

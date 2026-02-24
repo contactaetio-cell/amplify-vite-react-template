@@ -5,7 +5,7 @@ import "./styles/index.css";
 import { Amplify } from 'aws-amplify';
 import outputs from '../amplify_outputs.json'; 
 
-Amplify.configure(outputs);
+//Amplify.configure(outputs);
 createRoot(document.getElementById("root")!).render(<App />);
 
 // import React from "react";
