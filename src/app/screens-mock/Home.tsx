@@ -28,7 +28,7 @@ export function Home({ onViewInsight, onSearch }: HomeProps) {
   const [category, setCategory] = useState<Category>('trending');
   const [timeVintage, setTimeVintage] = useState<TimeVintage>('7d');
   const {  mock } = useParams<HomeProps>();
-  
+  console.log("mock",mock);
   const getInsightsForCategory = () => {
     const days = timeVintage === '1d' ? 1 : timeVintage === '7d' ? 7 : timeVintage === '30d' ? 30 : 90;
     

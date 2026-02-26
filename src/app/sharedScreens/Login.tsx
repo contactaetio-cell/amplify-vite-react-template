@@ -17,6 +17,7 @@ import { Navigate } from "react-router";
 import { useAuthenticator } from "@aws-amplify/ui-react";
 import '@aws-amplify/ui-react/styles.css';
 import { useNavigate } from "react-router";
+import { mockScreenPaths } from "../screens-mock/routesMock";
 
 export default function Login() {
   const { authStatus } = useAuthenticator((c) => [c.authStatus]);
@@ -32,7 +33,7 @@ export default function Login() {
   <button
     onClick={() => {
       console.log("mock");
-      navigate("/mock/dashboard");
+      navigate(mockScreenPaths.home);
     }}
     className="absolute top-6 right-6 bg-white text-black px-4 py-2 border border-black rounded"
   >
@@ -41,9 +42,10 @@ export default function Login() {
 
   <div className="flex-1 flex items-center justify-center px-6 pb-16">
     <Authenticator
-      socialProviders={["google"]}
+      socialProviders={["google", "CustomOIDC"]}
       signUpAttributes={["name"]}
     />
+
   </div>
 
 </div>

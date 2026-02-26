@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { LayoutDashboard, Upload, Search, Settings, HelpCircle, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-react';
-import { cn } from './ui/utils';
-import { Logo } from './Logo';
+import { cn } from '../components/ui/utils';
+import { Logo } from '../components/Logo';
+import { mockScreenPaths } from './routesMock';
 
 interface SidebarProps {
   currentScreen: string;
@@ -9,16 +10,26 @@ interface SidebarProps {
   onLogout: () => void;
 }
 
-const navItems = [
-  { id: 'home', label: 'Home', icon: LayoutDashboard },
-  { id: 'ingestion', label: 'Add New Insights', icon: Upload },
-  { id: 'discovery', label: 'Discover Insights', icon: Search },
-  { id: 'help', label: 'Help', icon: HelpCircle },
-  { id: 'settings', label: 'Settings', icon: Settings }
+export const navItemsMock = [
+  { id: mockScreenPaths.home, label: 'Home', icon: LayoutDashboard },
+  { id: mockScreenPaths.ingestion, label: 'Add New Insights', icon: Upload },
+  { id: mockScreenPaths.discovery, label: 'Discover Insights', icon: Search },
+  { id: mockScreenPaths.help, label: 'Help', icon: HelpCircle },
+  { id: mockScreenPaths.settings, label: 'Settings', icon: Settings },
 ];
 
-export function Sidebar({ currentScreen, onNavigate, onLogout }: SidebarProps) {
+export function SidebarMock({ currentScreen, onNavigate, onLogout }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const ingestionScreens = [
+    mockScreenPaths.ingestion,
+    mockScreenPaths['upload-progress'],
+    mockScreenPaths['manual-entry'],
+    mockScreenPaths.upload,
+    mockScreenPaths.extraction,
+    mockScreenPaths.structuring,
+    mockScreenPaths.validation,
+    mockScreenPaths.publish,
+  ];
 
   return (
     <aside
@@ -33,7 +44,7 @@ export function Sidebar({ currentScreen, onNavigate, onLogout }: SidebarProps) {
             'flex-1 hover:bg-gray-50 transition-colors',
             isCollapsed ? 'p-4' : 'p-6 text-left'
           )}
-          onClick={() => onNavigate('home')}
+          onClick={() => onNavigate(mockScreenPaths.home)}
         >
           <div className={cn('flex items-center', isCollapsed ? 'justify-center' : 'gap-2')}>
             <Logo variant="icon" className="h-6 w-6" />
@@ -56,10 +67,10 @@ export function Sidebar({ currentScreen, onNavigate, onLogout }: SidebarProps) {
       
       <nav className={cn('flex-1', isCollapsed ? 'p-2' : 'p-4')}>
         <ul className="space-y-1">
-          {navItems.map((item) => {
+          {navItemsMock.map((item) => {
             const Icon = item.icon;
             const isActive = currentScreen === item.id || 
-              (item.id === 'ingestion' && currentScreen === 'manual-entry');
+              (item.id === mockScreenPaths.ingestion && ingestionScreens.includes(currentScreen));
             
             return (
               <li key={item.id}>

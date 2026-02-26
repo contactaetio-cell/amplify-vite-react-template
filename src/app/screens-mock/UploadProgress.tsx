@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, DragEvent, ChangeEvent } from 'react';
+import { useState, useEffect } from 'react';
 import { StepProgress } from '../components/StepProgress';
 import { Progress } from '../components/ui/progress';
 import { Card } from '../components/ui/card';
@@ -17,42 +17,6 @@ export function UploadProgress({ onContinue }: UploadProgressProps) {
   const [progress, setProgress] = useState(0);
   const [extractedInsights, setExtractedInsights] = useState(0);
   const [metadataTags, setMetadataTags] = useState(0);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const formatFileSize = (sizeInBytes: number) => {
-    if (sizeInBytes < 1024 * 1024) {
-      return `${(sizeInBytes / 1024).toFixed(1)} KB`;
-    }
-    return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const handleFileSelection = (file: File | null) => {
-    setSelectedFile(file);
-  };
-
-  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragging(false);
-    const file = event.dataTransfer.files?.[0] ?? null;
-    handleFileSelection(file);
-  };
-
-  const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    handleFileSelection(file);
-  };
 
   useEffect(() => {
     // Simulate progress
@@ -103,48 +67,18 @@ export function UploadProgress({ onContinue }: UploadProgressProps) {
           <div className="col-span-2 space-y-6">
             <Card className="p-6">
               <div className="flex items-center gap-4 mb-6">
-                <div
-                  className={`flex-1 flex items-center gap-4 rounded-lg border p-4 transition-colors cursor-pointer ${
-                    isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'
-                  }`}
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                >
-                  <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
-                    <FileText className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    {selectedFile ? (
-                      <>
-                        <h3 className="font-medium text-gray-900">{selectedFile.name}</h3>
-                        <p className="text-sm text-gray-500">{formatFileSize(selectedFile.size)}</p>
-                      </>
-                    ) : (
-                      <>
-                        <h3 className="font-medium text-gray-900">Drag & drop a file here</h3>
-                        <p className="text-sm text-gray-500">or click to browse from your device</p>
-                      </>
-                    )}
-                  </div>
-                  <Badge
-                    variant="secondary"
-                    className={selectedFile ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-700'}
-                  >
-                    {selectedFile ? 'Ready' : 'No file'}
-                  </Badge>
+                <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <FileText className="w-6 h-6 text-blue-600" />
                 </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden"
-                  onChange={handleInputChange}
-                />
+                <div className="flex-1">
+                  <h3 className="font-medium text-gray-900">Enterprise_Security_Research_2026.pdf</h3>
+                  <p className="text-sm text-gray-500">4.2 MB • 45 pages</p>
+                </div>
+                <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                  Processing
+                </Badge>
               </div>
-              <Button className="mb-6 bg-blue-600 hover:bg-blue-700" disabled={!selectedFile}>
-                Upload
-              </Button>
+              
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between text-sm mb-2">

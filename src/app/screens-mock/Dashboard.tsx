@@ -21,7 +21,7 @@ export function Dashboard({ onNavigate, onViewInsight}: DashboardProps) {
     <div className="flex-1 overflow-auto bg-gray-50">
       <div className="max-w-7xl mx-auto p-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-semibold text-gray-900 mb-2">Welcome back, Sam</h1>
+          <h1 className="text-3xl font-semibold text-gray-900 mb-2">Welcome back, John</h1>
           <p className="text-gray-600">Here's what's happening with your insights today</p>
         </div>
         

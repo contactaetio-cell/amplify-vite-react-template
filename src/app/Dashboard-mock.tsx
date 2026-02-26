@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Sidebar } from './screens/Sidebar';
-import { Home } from './screens/Home';
-import { DataSourceConnection } from './screens/DataSourceConnection';
-import { InsightReview } from './screens/InsightReview';
-import { FinalValidation } from './screens/FinalValidation';
-import { DiscoveryHome } from './screens/DiscoveryHome';
-import { SearchResults } from './screens/SearchResults';
-import { InsightDetail } from './screens/InsightDetail';
-import { MyLibrary } from './screens/MyLibrary';
-import { InsightLibrary } from './screens/InsightLibrary';
-import { Help } from './screens/Help';
-import { ManualEntry } from './screens/ManualEntry';
+import { SidebarMock } from './screens-mock/Sidebar';
+import { Home } from './screens-mock/Home';
+import { DataSourceConnection } from './screens-mock/DataSourceConnection';
+import { InsightReview } from './screens-mock/InsightReview';
+import { FinalValidation } from './screens-mock/FinalValidation';
+import { DiscoveryHome } from './screens-mock/DiscoveryHome';
+import { SearchResults } from './screens-mock/SearchResults';
+import { InsightDetail } from './screens-mock/InsightDetail';
+import { MyLibrary } from './screens-mock/MyLibrary';
+import { InsightLibrary } from './screens-mock/InsightLibrary';
+import { Help } from './screens-mock/Help';
+import { ManualEntry } from './screens-mock/ManualEntry';
+import { UploadProgress } from './screens-mock/UploadProgress';
 import { UploadStage } from './screens/processing/UploadStage';
 import { ExtractionStage } from './screens/processing/ExtractionStage';
 import { StructuringStage } from './screens/processing/StructuringStage';
@@ -21,61 +22,22 @@ import { toast } from 'sonner';
 import { useParams } from 'react-router-dom';
 import { signOut } from 'aws-amplify/auth';
 import { useLocation, useNavigate } from 'react-router';
+import { mockPathToScreen, mockScreenPaths, type MockScreen } from './screens-mock/routesMock';
 
-type Screen = 
-  | 'home'
-  | 'ingestion'
-  | 'upload'
-  | 'extraction'
-  | 'structuring'
-  | 'validation'
-  | 'publish'
-  | 'insight-review'
-  | 'final-validation'
-  | 'library'
-  | 'discovery'
-  | 'search-results'
-  | 'insight-detail'
-  | 'my-library'
-  | 'manual-entry'
-  | 'help'
-  | 'settings';
-
-const validScreens: Screen[] = [
-  'home',
-  'ingestion',
-  'upload',
-  'extraction',
-  'structuring',
-  'validation',
-  'publish',
-  'insight-review',
-  'final-validation',
-  'library',
-  'discovery',
-  'search-results',
-  'insight-detail',
-  'my-library',
-  'manual-entry',
-  'help',
-  'settings',
-];
+type Screen = MockScreen;
 
 const isScreen = (value: string | undefined): value is Screen =>
-  !!value && validScreens.includes(value as Screen);
+  !!value && value in mockScreenPaths;
 
-export default function Dashboard() {
+export default function DashboardMock() {
   const navigate = useNavigate();
   const location = useLocation();
   const { insightId, screen } = useParams<{ insightId?: string; screen?: string }>();
-  const baseDashboardPath = '/dashboard';
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedInsightId, setSelectedInsightId] = useState<string>('');
-  const [processingFile, setProcessingFile] = useState<File | null>(null);
 
-  const getScreenPath = (nextScreen: Screen) =>
-    nextScreen === 'home' ? baseDashboardPath : `${baseDashboardPath}/${nextScreen}`;
+  const getScreenPath = (nextScreen: Screen) => mockScreenPaths[nextScreen];
 
   const navigateToScreen = (nextScreen: Screen) => {
     setCurrentScreen(nextScreen);
@@ -89,35 +51,43 @@ export default function Dashboard() {
       return;
     }
 
-    if (isScreen(screen)) {
-      setCurrentScreen(screen);
-      if (screen === 'search-results') {
+    const screenFromPath = mockPathToScreen[location.pathname];
+
+    if (screenFromPath) {
+      setCurrentScreen(screenFromPath);
+      if (screenFromPath === 'search-results') {
         const params = new URLSearchParams(location.search);
         setSearchQuery(params.get('q') ?? '');
       }
       return;
     }
 
-    if (screen === 'upload-progress') {
-      setCurrentScreen('upload');
-      navigate(getScreenPath('upload'), { replace: true });
+    if (isScreen(screen)) {
+      setCurrentScreen(screen);
+      navigate(getScreenPath(screen), { replace: true });
       return;
     }
 
-    if (!screen) {
+    if (location.pathname === '/mock' || location.pathname === '/mock/dashboard') {
       setCurrentScreen('home');
+      navigate(getScreenPath('home'), { replace: true });
     }
-  }, [insightId, screen, location.search]);
+  }, [insightId, screen, location.pathname, location.search]);
 
-  const handleNavigate = (screen: string) => {
-    if (!isScreen(screen)) return;
+  const handleNavigate = (target: string) => {
+    if (isScreen(target)) {
+      navigateToScreen(target);
+      return;
+    }
+
+    const screen = mockPathToScreen[target];
+    if (!screen) return;
     navigateToScreen(screen);
   };
 
   const handleSelectSource = (_sourceId: string) => {
     toast.success('Connecting to data source...');
-    setProcessingFile(null);
-    navigateToScreen('upload');
+    navigateToScreen('upload-progress');
   };
 
   const handleSearch = (query: string) => {
@@ -129,7 +99,7 @@ export default function Dashboard() {
   const handleViewInsight = (id: string) => {
     setSelectedInsightId(id);
     setCurrentScreen('insight-detail');
-    navigate(`/insight/${id}`);
+    navigate(`${mockScreenPaths['insight-detail']}/${id}`);
   };
 
   const handlePublish = () => {
@@ -161,22 +131,13 @@ export default function Dashboard() {
         );
       
       case 'upload':
-        return (
-          <UploadStage
-            onContinue={(file) => {
-              setProcessingFile(file);
-              navigateToScreen('extraction');
-            }}
-          />
-        );
+        return <UploadStage onContinue={() => navigateToScreen('extraction')} />;
+
+      case 'upload-progress':
+        return <UploadProgress onContinue={() => navigateToScreen('insight-review')} />;
 
       case 'extraction':
-        return (
-          <ExtractionStage
-            selectedFile={processingFile}
-            onContinue={() => navigateToScreen('validation')}
-          />
-        );
+        return <ExtractionStage onContinue={() => navigateToScreen('structuring')} />;
 
       case 'structuring':
         return <StructuringStage onContinue={() => navigateToScreen('validation')} />;
@@ -261,7 +222,7 @@ export default function Dashboard() {
 
   return (
     <div className="size-full flex bg-white relative">
-      <Sidebar currentScreen={currentScreen} onNavigate={handleNavigate} onLogout={logout} />
+      <SidebarMock currentScreen={getScreenPath(currentScreen)} onNavigate={handleNavigate} onLogout={logout} />
       {renderScreen()}
       <Toaster position="top-right" />
     </div>
