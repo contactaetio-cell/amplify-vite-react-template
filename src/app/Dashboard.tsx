@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sidebar } from './screens/Sidebar';
 import { Home } from './screens/Home';
 import { DataSourceConnection } from './screens/DataSourceConnection';
@@ -21,15 +21,17 @@ import { toast } from 'sonner';
 import { useParams } from 'react-router-dom';
 import { signOut } from 'aws-amplify/auth';
 import { useLocation, useNavigate } from 'react-router';
+import { Alert, AlertDescription, AlertTitle } from './components/ui/alert';
+import { Button } from './components/ui/button';
+import {
+  deleteExtractionFileFromS3,
+  type UploadedS3Object,
+} from './api/storage';
 
 type Screen = 
   | 'home'
   | 'ingestion'
-  | 'upload'
-  | 'extraction'
-  | 'structuring'
-  | 'validation'
-  | 'publish'
+  | 'add-new-insight'
   | 'insight-review'
   | 'final-validation'
   | 'library'
@@ -44,11 +46,7 @@ type Screen =
 const validScreens: Screen[] = [
   'home',
   'ingestion',
-  'upload',
-  'extraction',
-  'structuring',
-  'validation',
-  'publish',
+  'add-new-insight',
   'insight-review',
   'final-validation',
   'library',
@@ -64,6 +62,14 @@ const validScreens: Screen[] = [
 const isScreen = (value: string | undefined): value is Screen =>
   !!value && validScreens.includes(value as Screen);
 
+const legacyProcessingScreens = new Set([
+  'upload',
+  'extraction',
+  'structuring',
+  'validation',
+  'publish',
+]);
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -72,20 +78,62 @@ export default function Dashboard() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedInsightId, setSelectedInsightId] = useState<string>('');
-  const [processingFile, setProcessingFile] = useState<File | null>(null);
+  const [workflowStep, setWorkflowStep] = useState(0);
+  const [workflowFile, setWorkflowFile] = useState<File | null>(null);
+  const [uploadedWorkflowObject, setUploadedWorkflowObject] = useState<UploadedS3Object | null>(null);
+  const [isLeaveBannerVisible, setIsLeaveBannerVisible] = useState(false);
+  const [isDeletingUploadedFile, setIsDeletingUploadedFile] = useState(false);
+  const pendingLeaveActionRef = useRef<null | (() => void)>(null);
+
+  const isInAddNewInsightWorkflow = currentScreen === 'add-new-insight';
+  const shouldGuardWorkflowExit = isInAddNewInsightWorkflow && !!uploadedWorkflowObject;
 
   const getScreenPath = (nextScreen: Screen) =>
     nextScreen === 'home' ? baseDashboardPath : `${baseDashboardPath}/${nextScreen}`;
 
-  const navigateToScreen = (nextScreen: Screen) => {
+  const resetAddNewInsightWorkflow = useCallback(() => {
+    setWorkflowStep(0);
+    setWorkflowFile(null);
+    setUploadedWorkflowObject(null);
+  }, []);
+
+  const navigateToScreenDirect = (nextScreen: Screen) => {
     setCurrentScreen(nextScreen);
     navigate(getScreenPath(nextScreen));
+  };
+
+  const requestWorkflowLeaveConfirmation = useCallback(
+    (action: () => void) => {
+      if (!shouldGuardWorkflowExit) {
+        action();
+        return;
+      }
+
+      pendingLeaveActionRef.current = action;
+      setIsLeaveBannerVisible(true);
+    },
+    [shouldGuardWorkflowExit],
+  );
+
+  const navigateToScreen = (nextScreen: Screen) => {
+    if (isInAddNewInsightWorkflow && nextScreen !== 'add-new-insight') {
+      requestWorkflowLeaveConfirmation(() => navigateToScreenDirect(nextScreen));
+      return;
+    }
+
+    navigateToScreenDirect(nextScreen);
   };
 
   useEffect(() => {
     if (insightId) {
       setSelectedInsightId(insightId);
       setCurrentScreen('insight-detail');
+      return;
+    }
+
+    if (screen && legacyProcessingScreens.has(screen)) {
+      setCurrentScreen('add-new-insight');
+      navigate(getScreenPath('add-new-insight'), { replace: true });
       return;
     }
 
@@ -99,15 +147,26 @@ export default function Dashboard() {
     }
 
     if (screen === 'upload-progress') {
-      setCurrentScreen('upload');
-      navigate(getScreenPath('upload'), { replace: true });
+      setCurrentScreen('add-new-insight');
+      navigate(getScreenPath('add-new-insight'), { replace: true });
       return;
     }
 
     if (!screen) {
       setCurrentScreen('home');
     }
-  }, [insightId, screen, location.search]);
+  }, [insightId, screen, location.search, navigate]);
+
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!shouldGuardWorkflowExit) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [shouldGuardWorkflowExit]);
 
   const handleNavigate = (screen: string) => {
     if (!isScreen(screen)) return;
@@ -116,20 +175,24 @@ export default function Dashboard() {
 
   const handleSelectSource = (_sourceId: string) => {
     toast.success('Connecting to data source...');
-    setProcessingFile(null);
-    navigateToScreen('upload');
+    resetAddNewInsightWorkflow();
+    navigateToScreen('add-new-insight');
   };
 
   const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    navigate(`${getScreenPath('search-results')}?q=${encodeURIComponent(query)}`);
-    setCurrentScreen('search-results');
+    requestWorkflowLeaveConfirmation(() => {
+      setSearchQuery(query);
+      navigate(`${getScreenPath('search-results')}?q=${encodeURIComponent(query)}`);
+      setCurrentScreen('search-results');
+    });
   };
 
   const handleViewInsight = (id: string) => {
-    setSelectedInsightId(id);
-    setCurrentScreen('insight-detail');
-    navigate(`/insight/${id}`);
+    requestWorkflowLeaveConfirmation(() => {
+      setSelectedInsightId(id);
+      setCurrentScreen('insight-detail');
+      navigate(`/insight/${id}`);
+    });
   };
 
   const handlePublish = () => {
@@ -147,6 +210,81 @@ export default function Dashboard() {
     }
   };
 
+  const stayInAddNewInsightWorkflow = () => {
+    pendingLeaveActionRef.current = null;
+    setIsLeaveBannerVisible(false);
+  };
+
+  const leaveAddNewInsightWorkflow = async () => {
+    const pendingAction = pendingLeaveActionRef.current;
+    if (!pendingAction) {
+      setIsLeaveBannerVisible(false);
+      return;
+    }
+
+    setIsDeletingUploadedFile(true);
+    if (uploadedWorkflowObject?.path) {
+      try {
+        await deleteExtractionFileFromS3(uploadedWorkflowObject.path);
+      } catch (error) {
+        console.error('Failed to delete uploaded S3 object:', error);
+        toast.error('Could not delete uploaded file. Please try leaving again.');
+        setIsDeletingUploadedFile(false);
+        return;
+      }
+    }
+
+    resetAddNewInsightWorkflow();
+    pendingLeaveActionRef.current = null;
+    setIsLeaveBannerVisible(false);
+    setIsDeletingUploadedFile(false);
+    pendingAction();
+  };
+
+  const renderAddNewInsightWorkflow = () => {
+    switch (workflowStep) {
+      case 0:
+        return (
+          <UploadStage
+            onContinue={(file) => {
+              setWorkflowFile(file);
+              setWorkflowStep(1);
+            }}
+          />
+        );
+      case 1:
+        return (
+          <ExtractionStage
+            selectedFile={workflowFile}
+            onFileUploaded={(uploadedObject) => setUploadedWorkflowObject(uploadedObject)}
+            onContinue={() => setWorkflowStep(2)}
+          />
+        );
+      case 2:
+        return <StructuringStage onContinue={() => setWorkflowStep(3)} />;
+      case 3:
+        return <ValidationStage onContinue={() => setWorkflowStep(4)} />;
+      case 4:
+        return (
+          <PublishStage
+            onContinue={() => {
+              resetAddNewInsightWorkflow();
+              navigateToScreenDirect('insight-review');
+            }}
+          />
+        );
+      default:
+        return (
+          <UploadStage
+            onContinue={(file) => {
+              setWorkflowFile(file);
+              setWorkflowStep(1);
+            }}
+          />
+        );
+    }
+  };
+
   const renderScreen = () => {
     switch (currentScreen) {
       case 'home':
@@ -159,33 +297,9 @@ export default function Dashboard() {
             onManualEntry={() => navigateToScreen('manual-entry')}
           />
         );
-      
-      case 'upload':
-        return (
-          <UploadStage
-            onContinue={(file) => {
-              setProcessingFile(file);
-              navigateToScreen('extraction');
-            }}
-          />
-        );
 
-      case 'extraction':
-        return (
-          <ExtractionStage
-            selectedFile={processingFile}
-            onContinue={() => navigateToScreen('validation')}
-          />
-        );
-
-      case 'structuring':
-        return <StructuringStage onContinue={() => navigateToScreen('validation')} />;
-
-      case 'validation':
-        return <ValidationStage onContinue={() => navigateToScreen('publish')} />;
-
-      case 'publish':
-        return <PublishStage onContinue={() => navigateToScreen('insight-review')} />;
+      case 'add-new-insight':
+        return renderAddNewInsightWorkflow();
       
       case 'insight-review':
         return <InsightReview onApprove={() => navigateToScreen('final-validation')} />;
@@ -262,6 +376,28 @@ export default function Dashboard() {
   return (
     <div className="size-full flex bg-white relative">
       <Sidebar currentScreen={currentScreen} onNavigate={handleNavigate} onLogout={logout} />
+      {isLeaveBannerVisible && (
+        <div className="absolute top-4 left-1/2 z-50 w-[min(680px,calc(100%-2rem))] -translate-x-1/2">
+          <Alert className="border-amber-300 bg-amber-50 text-amber-950 shadow-lg">
+            <AlertTitle>Leave Add New Insight workflow?</AlertTitle>
+            <AlertDescription className="text-amber-950">
+              <p>You will lose this in-progress insight if you leave now.</p>
+              <div className="mt-3 flex items-center gap-2">
+                <Button variant="outline" onClick={stayInAddNewInsightWorkflow} disabled={isDeletingUploadedFile}>
+                  Stay
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={leaveAddNewInsightWorkflow}
+                  disabled={isDeletingUploadedFile}
+                >
+                  {isDeletingUploadedFile ? 'Deleting file...' : 'Leave'}
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
       {renderScreen()}
       <Toaster position="top-right" />
     </div>

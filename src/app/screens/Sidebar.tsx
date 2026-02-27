@@ -19,7 +19,7 @@ const navItems = [
 
 export function Sidebar({ currentScreen, onNavigate, onLogout }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const ingestionScreens = ['manual-entry', 'upload', 'extraction', 'structuring', 'validation', 'publish'];
+  const ingestionScreens = ['manual-entry', 'add-new-insight'];
 
   return (
     <aside

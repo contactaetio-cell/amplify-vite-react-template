@@ -1,15 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { Insight } from '../../data/mockData';
-import { uploadExtractionFileToS3 } from '../../api/storage';
+import { uploadExtractionFileToS3, type UploadedS3Object } from '../../api/storage';
 
 interface ExtractionStageProps {
   selectedFile?: File | null;
+  onFileUploaded: (object: UploadedS3Object) => void;
   onContinue: () => void;
 }
 
-async function runExtractionPipeline(file: File): Promise<Insight[]> {
-  const { path: s3Path, url: s3Url } = await uploadExtractionFileToS3(file);
+interface ExtractionPipelineResult {
+  insights: Insight[];
+  uploadedObject: UploadedS3Object;
+}
+
+async function runExtractionPipeline(file: File): Promise<ExtractionPipelineResult> {
+  const uploadedObject = await uploadExtractionFileToS3(file);
+  const { path: s3Path, url: s3Url } = uploadedObject;
 
   // TODO(backend): Send `s3Url` to the `extractInsights` function once implemented.
   // Example shape:
@@ -18,10 +25,17 @@ async function runExtractionPipeline(file: File): Promise<Insight[]> {
   // TODO(frontend): Return/map `extractedInsights` to Insight[] and store in UI state.
   void s3Path;
   void s3Url;
-  return [];
+  return {
+    insights: [],
+    uploadedObject,
+  };
 }
 
-export function ExtractionStage({ selectedFile = null, onContinue }: ExtractionStageProps) {
+export function ExtractionStage({
+  selectedFile = null,
+  onFileUploaded,
+  onContinue,
+}: ExtractionStageProps) {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const hasNavigatedRef = useRef(false);
@@ -37,13 +51,14 @@ export function ExtractionStage({ selectedFile = null, onContinue }: ExtractionS
 
     setIsLoading(true);
     runExtractionPipeline(selectedFile)
-      .then((nextInsights) => {
+      .then(({ insights: nextInsights, uploadedObject }) => {
         setInsights(nextInsights);
+        onFileUploaded(uploadedObject);
       })
       .finally(() => {
         setIsLoading(false);
       });
-  }, [selectedFile]);
+  }, [selectedFile, onFileUploaded]);
 
   useEffect(() => {
     if (!selectedFile || isLoading || hasNavigatedRef.current) return;
