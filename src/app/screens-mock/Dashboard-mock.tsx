@@ -1,28 +1,28 @@
 import { useEffect, useState } from 'react';
-import { SidebarMock } from './screens-mock/Sidebar';
-import { Home } from './screens-mock/Home';
-import { DataSourceConnection } from './screens-mock/DataSourceConnection';
-import { InsightReview } from './screens-mock/InsightReview';
-import { FinalValidation } from './screens-mock/FinalValidation';
-import { DiscoveryHome } from './screens-mock/DiscoveryHome';
-import { SearchResults } from './screens-mock/SearchResults';
-import { InsightDetail } from './screens-mock/InsightDetail';
-import { MyLibrary } from './screens-mock/MyLibrary';
-import { InsightLibrary } from './screens-mock/InsightLibrary';
-import { Help } from './screens-mock/Help';
-import { ManualEntry } from './screens-mock/ManualEntry';
-import { UploadProgress } from './screens-mock/UploadProgress';
-import { UploadStage } from './screens/processing/UploadStage';
-import { ExtractionStage } from './screens/processing/ExtractionStage';
-import { StructuringStage } from './screens/processing/StructuringStage';
-import { ValidationStage } from './screens/processing/ValidationStage';
-import { PublishStage } from './screens/processing/PublishStage';
-import { Toaster } from './components/ui/sonner';
+import { SidebarMock } from './Sidebar';
+import { Home } from './Home';
+import { DataSourceConnection } from './DataSourceConnection';
+import { InsightReview } from './InsightReview';
+import { FinalValidation } from './FinalValidation';
+import { DiscoveryHome } from './DiscoveryHome';
+import { SearchResults } from './SearchResults';
+import { InsightDetail } from './InsightDetail';
+import { MyLibrary } from './MyLibrary';
+import { InsightLibrary } from './InsightLibrary';
+import { Help } from './Help';
+import { ManualEntry } from './ManualEntry';
+import { UploadProgress } from './UploadProgress';
+import { UploadStage } from '../screens/processing/UploadStage';
+// import { ExtractionStage } from './screens/processing/ExtractionStage';
+// import { StructuringStage } from './screens/processing/StructuringStage';
+// import { ValidationStage } from './screens/processing/ValidationStage';
+// import { PublishStage } from './screens/processing/PublishStage';
+import { Toaster } from '../components/ui/sonner';
 import { toast } from 'sonner';
 import { useParams } from 'react-router-dom';
 import { signOut } from 'aws-amplify/auth';
 import { useLocation, useNavigate } from 'react-router';
-import { mockPathToScreen, mockScreenPaths, type MockScreen } from './screens-mock/routesMock';
+import { mockPathToScreen, mockScreenPaths, type MockScreen } from './routesMock';
 
 type Screen = MockScreen;
 
@@ -136,17 +136,17 @@ export default function DashboardMock() {
       case 'upload-progress':
         return <UploadProgress onContinue={() => navigateToScreen('insight-review')} />;
 
-      case 'extraction':
-        return <ExtractionStage onContinue={() => navigateToScreen('structuring')} />;
+      // case 'extraction':
+      //   return <ExtractionStage onContinue={() => navigateToScreen('structuring')} />;
 
-      case 'structuring':
-        return <StructuringStage onContinue={() => navigateToScreen('validation')} />;
+      // case 'structuring':
+      //   return <StructuringStage onContinue={() => navigateToScreen('validation')} />;
 
-      case 'validation':
-        return <ValidationStage onContinue={() => navigateToScreen('publish')} />;
+      // case 'validation':
+      //   return <ValidationStage onContinue={() => navigateToScreen('publish')} />;
 
-      case 'publish':
-        return <PublishStage onContinue={() => navigateToScreen('insight-review')} />;
+      // case 'publish':
+      //   return <PublishStage onContinue={() => navigateToScreen('insight-review')} />;
       
       case 'insight-review':
         return <InsightReview onApprove={() => navigateToScreen('final-validation')} />;

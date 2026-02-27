@@ -2,7 +2,7 @@ import { createBrowserRouter, Navigate } from "react-router";
 import Landing from "./app/sharedScreens/Landing";
 import Product from "./app/sharedScreens/Product";
 import Login from "./app/sharedScreens/Login";
-import DashboardMock from "./app/Dashboard-mock";
+import DashboardMock from "./app/screens-mock/Dashboard-mock";
 import Dashboard from "./app/Dashboard";
 import AuthGate from "./AuthGate";
 import ExportIcons from "./app/screens-mock/ExportIcons";

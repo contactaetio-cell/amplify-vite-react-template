@@ -37,6 +37,9 @@ export function ProcessingStagePage({
         <div className="mb-8">
           <h1 className="text-3xl font-semibold text-gray-900 mb-2">{title}</h1>
           <p className="text-gray-600">{description}</p>
+          <p className="text-gray-500 italic mt-1">
+            If you leave during this process, your files &amp; changes will be lost
+          </p>
         </div>
 
         <StepProgress steps={steps} currentStep={currentStep} />

@@ -1,4 +1,4 @@
-import { getUrl, remove, uploadData } from 'aws-amplify/storage';
+import { getUrl, uploadData } from 'aws-amplify/storage';
 
 const EXTRACTION_UPLOAD_PREFIX = 'uploads/extraction';
 
@@ -29,8 +29,4 @@ export async function uploadExtractionFileToS3(file: File): Promise<UploadedS3Ob
     path,
     url: url.toString(),
   };
-}
-
-export async function deleteExtractionFileFromS3(path: string): Promise<void> {
-  await remove({ path });
 }

@@ -1,22 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { Insight } from '../../data/mockData';
-import { uploadExtractionFileToS3, type UploadedS3Object } from '../../api/storage';
+import { uploadExtractionFileToS3 } from '../../api/storage';
 
 interface ExtractionStageProps {
   selectedFile?: File | null;
-  onFileUploaded: (object: UploadedS3Object) => void;
   onContinue: () => void;
 }
 
-interface ExtractionPipelineResult {
-  insights: Insight[];
-  uploadedObject: UploadedS3Object;
-}
-
-async function runExtractionPipeline(file: File): Promise<ExtractionPipelineResult> {
-  const uploadedObject = await uploadExtractionFileToS3(file);
-  const { path: s3Path, url: s3Url } = uploadedObject;
+async function runExtractionPipeline(file: File): Promise<Insight[]> {
+  const { path: s3Path, url: s3Url } = await uploadExtractionFileToS3(file);
 
   // TODO(backend): Send `s3Url` to the `extractInsights` function once implemented.
   // Example shape:
@@ -25,15 +18,11 @@ async function runExtractionPipeline(file: File): Promise<ExtractionPipelineResu
   // TODO(frontend): Return/map `extractedInsights` to Insight[] and store in UI state.
   void s3Path;
   void s3Url;
-  return {
-    insights: [],
-    uploadedObject,
-  };
+  return [];
 }
 
 export function ExtractionStage({
   selectedFile = null,
-  onFileUploaded,
   onContinue,
 }: ExtractionStageProps) {
   const [insights, setInsights] = useState<Insight[]>([]);
@@ -51,14 +40,13 @@ export function ExtractionStage({
 
     setIsLoading(true);
     runExtractionPipeline(selectedFile)
-      .then(({ insights: nextInsights, uploadedObject }) => {
+      .then((nextInsights) => {
         setInsights(nextInsights);
-        onFileUploaded(uploadedObject);
       })
       .finally(() => {
         setIsLoading(false);
       });
-  }, [selectedFile, onFileUploaded]);
+  }, [selectedFile]);
 
   useEffect(() => {
     if (!selectedFile || isLoading || hasNavigatedRef.current) return;
@@ -72,6 +60,9 @@ export function ExtractionStage({
         <div className="max-w-6xl mx-auto p-8">
           <div className="rounded-xl border border-gray-200 bg-white p-8">
             <h1 className="text-2xl font-semibold text-gray-900 mb-2">Extraction</h1>
+            <p className="text-gray-500 italic mb-2">
+              If you leave during this process, your files &amp; changes will be lost
+            </p>
             <p className="text-gray-600">
               No file found from Upload stage. Go back and upload a file first.
             </p>
@@ -88,6 +79,9 @@ export function ExtractionStage({
           <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
           <div>
             <h1 className="text-2xl font-semibold text-gray-900 mb-1">Extraction</h1>
+            <p className="text-gray-500 italic mb-1">
+              If you leave during this process, your files &amp; changes will be lost
+            </p>
             <p className="text-gray-600">
               {isLoading
                 ? 'Thinking... this might take a minute or two.'
