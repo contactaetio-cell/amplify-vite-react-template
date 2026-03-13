@@ -39,11 +39,10 @@ export function Help() {
     },
     {
       icon: Search,
-      title: 'Search & Discover Insights',
+      title: 'Search & Find Insights',
       description: 'Use powerful search and filtering to find relevant insights across your entire research database.',
       steps: [
-        'Navigate to the Search / Discovery page',
-        'Use the search bar to find insights by keywords',
+        'Use the search bar on the Home page to find insights by keywords',
         'Apply filters for team, date range, confidence, tags, and metadata',
         'Sort results by relevance, date, or confidence score',
         'Click any insight to view full details'

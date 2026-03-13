@@ -3,19 +3,15 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { TrendingUp, FileText, Users, Clock, ArrowRight } from 'lucide-react';
 import { mockInsights, getTrendingInsights } from '../data/mockData';
-import { useParams } from 'react-router-dom';
 
 interface DashboardProps {
   onNavigate: (screen: string) => void;
   onViewInsight: (id: string) => void;
-  mock?: boolean;
 }
 
-export function Dashboard({ onNavigate, onViewInsight}: DashboardProps) {
-  const {  mock } = useParams<DashboardProps>();
-  console.log("mock",mock);
-  const recentInsights = mock ? mockInsights.slice(0, 3) : [];
-  const trendingInsights = mock ? getTrendingInsights() : [];
+export function Dashboard({ onNavigate, onViewInsight }: DashboardProps) {
+  const recentInsights = mockInsights.slice(0, 3);
+  const trendingInsights = getTrendingInsights();
 
   return (
     <div className="flex-1 overflow-auto bg-gray-50">
@@ -136,14 +132,14 @@ export function Dashboard({ onNavigate, onViewInsight}: DashboardProps) {
                 </button>
                 
                 <button
-                  onClick={() => onNavigate('discovery')}
+                  onClick={() => onNavigate('home')}
                   className="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors text-left group"
                 >
                   <div className="w-10 h-10 rounded-lg bg-purple-50 group-hover:bg-purple-100 flex items-center justify-center mb-3">
                     <TrendingUp className="w-5 h-5 text-purple-600" />
                   </div>
                   <h3 className="font-medium text-gray-900 mb-1">Search Insights</h3>
-                  <p className="text-sm text-gray-600">Discover existing research</p>
+                  <p className="text-sm text-gray-600">Search existing research</p>
                 </button>
               </div>
             </Card>

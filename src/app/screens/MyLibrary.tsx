@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bookmark, Clock, Share2, Upload, Trash2 } from 'lucide-react';
+import { Bookmark, Clock, Share2, Upload, Trash2, ArrowLeft } from 'lucide-react';
 import { Card } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -16,10 +16,10 @@ import { getSavedInsights, getSharedInsights, mockUploadHistory, mockRecentSearc
 
 interface MyLibraryProps {
   onViewInsight: (id: string) => void;
-  onSearch: (query: string) => void;
+  onBack: () => void;
 }
 
-export function MyLibrary({ onViewInsight, onSearch }: MyLibraryProps) {
+export function MyLibrary({ onViewInsight, onBack }: MyLibraryProps) {
   const [activeTab, setActiveTab] = useState('saved');
   
   const savedInsights = getSavedInsights();
@@ -29,7 +29,17 @@ export function MyLibrary({ onViewInsight, onSearch }: MyLibraryProps) {
     <div className="flex-1 overflow-auto bg-gray-50">
       <div className="max-w-7xl mx-auto p-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-semibold text-gray-900 mb-2">My Library</h1>
+          <div className="flex items-center gap-3 mb-2">
+            <button
+              onClick={onBack}
+              className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span className="text-sm">Back</span>
+            </button>
+            <div className="w-px h-6 bg-gray-200" />
+            <h1 className="text-3xl font-semibold text-gray-900">My Library</h1>
+          </div>
           <p className="text-gray-600">
             Your personal collection of insights, uploads, and searches
           </p>
@@ -136,12 +146,9 @@ export function MyLibrary({ onViewInsight, onSearch }: MyLibraryProps) {
               <Card className="p-12 text-center">
                 <Bookmark className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                 <h3 className="font-medium text-gray-900 mb-2">No saved insights yet</h3>
-                <p className="text-sm text-gray-600 mb-4">
+                <p className="text-sm text-gray-600">
                   Save insights you want to reference later
                 </p>
-                <Button onClick={() => onSearch('')} className="bg-blue-600 hover:bg-blue-700">
-                  Browse Insights
-                </Button>
               </Card>
             )}
           </TabsContent>
@@ -151,10 +158,9 @@ export function MyLibrary({ onViewInsight, onSearch }: MyLibraryProps) {
             <Card>
               <div className="divide-y divide-gray-200">
                 {mockRecentSearches.map((search) => (
-                  <button
+                  <div
                     key={search.id}
-                    onClick={() => onSearch(search.query)}
-                    className="w-full px-6 py-4 text-left hover:bg-gray-50 transition-colors flex items-center justify-between group"
+                    className="px-6 py-4 flex items-center justify-between"
                   >
                     <div className="flex items-center gap-4">
                       <Clock className="w-5 h-5 text-gray-400" />
@@ -169,14 +175,7 @@ export function MyLibrary({ onViewInsight, onSearch }: MyLibraryProps) {
                         </p>
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      Search Again
-                    </Button>
-                  </button>
+                  </div>
                 ))}
               </div>
             </Card>

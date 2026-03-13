@@ -1,18 +1,18 @@
 import { useState } from 'react';
-import { Sidebar } from './screens/Sidebar';
-import { Home } from './screens/Home';
-import { DataSourceConnection } from './screens/DataSourceConnection';
-import { UploadProgress } from './screens/UploadProgress';
-import { InsightReview } from './screens/InsightReview';
-import { FinalValidation } from './screens/FinalValidation';
-import { InsightDetail } from './screens/InsightDetail';
-import { MyLibrary } from './screens/MyLibrary';
-import { InsightLibrary } from './screens/InsightLibrary';
-import { Help } from './screens/Help';
-import { ManualEntry } from './screens/ManualEntry';
-import { BrowseInsights } from './screens/BrowseInsights';
-import { TopInsights } from './screens/TopInsights';
-import { Toaster } from './components/ui/sonner';
+import { Sidebar } from './Sidebar';
+import { Home } from './Home';
+import { DataSourceConnection } from './DataSourceConnection';
+import { UploadProgress } from './UploadProgress';
+import { InsightReview } from './InsightReview';
+import { FinalValidation } from './FinalValidation';
+import { InsightDetail } from './InsightDetail';
+import { MyLibrary } from './MyLibrary';
+import { InsightLibrary } from './InsightLibrary';
+import { Help } from './Help';
+import { ManualEntry } from './ManualEntry';
+import { BrowseInsights } from './BrowseInsights';
+import { TopInsights } from './TopInsights';
+import { Toaster } from '../components/ui/sonner';
 import { toast } from 'sonner';
 
 type Screen = 

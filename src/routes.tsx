@@ -2,15 +2,14 @@ import { createBrowserRouter, Navigate } from "react-router";
 import Landing from "./app/sharedScreens/Landing";
 import Product from "./app/sharedScreens/Product";
 import Login from "./app/sharedScreens/Login";
-import DashboardMock from "./app/screens-mock/Dashboard-mock";
+import MockApp from "./app/screens-mock/MockApp";
 import Dashboard from "./app/Dashboard";
 import AuthGate from "./AuthGate";
-import ExportIcons from "./app/screens-mock/ExportIcons";
 import { mockScreenPaths } from "./app/screens-mock/routesMock";
 
 const mockScreenRouteEntries = Object.values(mockScreenPaths).map((path) => ({
     path,
-    element: <DashboardMock />,
+    element: <MockApp />,
   }));
 
 export const router = createBrowserRouter([
@@ -27,29 +26,25 @@ export const router = createBrowserRouter([
     Component: Login,
   },
   {
-    path: "/export-icons",
-    Component: ExportIcons,
-  },
-  {
     path: "/mock/dashboard",
-    element: <Navigate to={mockScreenPaths.home} replace />,
+    element: <Navigate to={mockScreenPaths.MockApp} replace />,
   },
   {
     path: "/mock/dashboard/:screen",
-    element: <DashboardMock />,
+    element: <MockApp />,
   },
   {
     path: "/mock/dashboard/insight/:insightId",
-    element: <DashboardMock />,
+    element: <MockApp />,
   },
   {
     path: "/mock",
-    element: <Navigate to={mockScreenPaths.home} replace />,
+    element: <Navigate to={mockScreenPaths.MockApp} replace />,
   },
   ...mockScreenRouteEntries,
   {
     path: `${mockScreenPaths["insight-detail"]}/:insightId`,
-    element: <DashboardMock />,
+    element: <MockApp />,
   },
   {
     path: "/dashboard",

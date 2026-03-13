@@ -54,7 +54,7 @@ export function InsightLibrary({ onViewInsight, onBack }: InsightLibraryProps) {
             className="gap-2 mb-4 -ml-2"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to Discovery
+            Back to Home
           </Button>
           <div className="flex items-center gap-3 mb-2">
             <Library className="w-8 h-8 text-blue-600" />

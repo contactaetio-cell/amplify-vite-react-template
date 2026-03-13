@@ -1,121 +1,129 @@
-import { useState } from 'react';
-import { LayoutDashboard, Upload, Search, Settings, HelpCircle, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { LayoutDashboard, Upload, HelpCircle, Settings, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { cn } from '../components/ui/utils';
-import { Logo } from '../components/Logo';
+import { fetchUserAttributes } from "aws-amplify/auth";
 
 interface SidebarProps {
   currentScreen: string;
   onNavigate: (screen: string) => void;
-  onLogout: () => void;
 }
 
 const navItems = [
   { id: 'home', label: 'Home', icon: LayoutDashboard },
   { id: 'ingestion', label: 'Add New Insights', icon: Upload },
-  { id: 'discovery', label: 'Discover Insights', icon: Search },
   { id: 'help', label: 'Help', icon: HelpCircle },
   { id: 'settings', label: 'Settings', icon: Settings }
 ];
 
-export function Sidebar({ currentScreen, onNavigate, onLogout }: SidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const ingestionScreens = ['manual-entry', 'add-new-insight'];
+export function Sidebar({ currentScreen, onNavigate }: SidebarProps) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [name, setName] = useState<string>("");
+  const [picture, setPicture] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const attributes = await fetchUserAttributes();
+        setName(attributes.given_name ?? attributes.email ?? "User");
+        setPicture(attributes.picture ?? null);
+      } catch (err) {
+        console.error("Failed to fetch user attributes", err);
+      }
+    }
+
+    loadUser();
+  }, []);
 
   return (
     <aside
       className={cn(
-        'border-r border-gray-200 bg-white flex flex-col transition-all duration-200',
-        isCollapsed ? 'w-20' : 'w-64'
+        "bg-[#0f1f3a] flex flex-col flex-shrink-0 transition-all duration-300 ease-in-out",
+        collapsed ? "w-[68px]" : "w-64"
       )}
     >
-      <div className="border-b border-gray-200 flex">
+      {/* Header */}
+      <div className="flex items-center border-b border-[#234060]">
         <button
-          className={cn(
-            'flex-1 hover:bg-gray-50 transition-colors',
-            isCollapsed ? 'p-4' : 'p-6 text-left'
-          )}
           onClick={() => onNavigate('home')}
-        >
-          <div className={cn('flex items-center', isCollapsed ? 'justify-center' : 'gap-2')}>
-            <Logo variant="icon" className="h-6 w-6" />
-            {!isCollapsed && <span className="text-lg font-semibold tracking-tight text-gray-900">Aetio</span>}
-          </div>
-          {!isCollapsed && <p className="text-sm text-gray-500 mt-1">The Insights Marketplace</p>}
-        </button>
-
-        <button
-          onClick={() => setIsCollapsed((prev) => !prev)}
           className={cn(
-            'border-l border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center',
-            isCollapsed ? 'w-8' : 'w-10'
+            "flex-1 text-left hover:bg-[#1a2f4d] transition-colors min-w-0",
+            collapsed ? "p-4 flex items-center justify-center" : "p-6"
           )}
-          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {isCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+          {collapsed ? (
+            <span className="text-xl font-semibold text-white">A</span>
+          ) : (
+            <>
+              <h1 className="text-xl font-semibold text-white">Aetio</h1>
+              <p className="text-sm text-[#6da3d8] mt-1">The Insights Marketplace</p>
+            </>
+          )}
         </button>
       </div>
-      
-      <nav className={cn('flex-1', isCollapsed ? 'p-2' : 'p-4')}>
+
+      {/* Collapse Toggle */}
+      <div className={cn("px-3 pt-3", collapsed ? "flex justify-center" : "flex justify-end")}>
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="p-1.5 rounded-md text-[#6da3d8] hover:text-white hover:bg-[#1a2f4d] transition-colors"
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? (
+            <PanelLeft className="w-4 h-4" />
+          ) : (
+            <PanelLeftClose className="w-4 h-4" />
+          )}
+        </button>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 p-3">
         <ul className="space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = currentScreen === item.id || 
-              (item.id === 'ingestion' && ingestionScreens.includes(currentScreen));
-            
+            const isActive = currentScreen === item.id ||
+              (item.id === 'ingestion' && currentScreen === 'manual-entry');
+
             return (
               <li key={item.id}>
                 <button
                   onClick={() => onNavigate(item.id)}
+                  title={collapsed ? item.label : undefined}
                   className={cn(
-                    'w-full rounded-lg transition-colors',
-                    isCollapsed ? 'flex justify-center p-3' : 'flex items-center gap-3 px-4 py-3 text-sm',
-                    isActive 
-                      ? 'bg-blue-50 text-blue-700 font-medium' 
-                      : 'text-gray-700 hover:bg-gray-50'
+                    "w-full flex items-center rounded-lg text-sm transition-colors",
+                    collapsed
+                      ? "justify-center px-0 py-3"
+                      : "gap-3 px-4 py-3",
+                    isActive
+                      ? "bg-[#1a2f4d] text-white font-medium"
+                      : "text-[#a8c9e8] hover:bg-[#1a2f4d] hover:text-white"
                   )}
-                  title={isCollapsed ? item.label : undefined}
                 >
-                  <Icon className="w-5 h-5" />
-                  {!isCollapsed && <span>{item.label}</span>}
+                  <Icon className="w-5 h-5 flex-shrink-0" />
+                  {!collapsed && <span className="truncate">{item.label}</span>}
                 </button>
               </li>
             );
           })}
         </ul>
       </nav>
-      
-      <div className={cn('border-t border-gray-200', isCollapsed ? 'p-2' : 'p-4')}>
-        <div className={cn(isCollapsed ? 'flex justify-center py-2' : 'flex items-center gap-3 px-4 py-3')}>
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
+
+      {/* User section */}
+      <div className="p-3 border-t border-[#234060]">
+        <div
+          className={cn(
+            "flex items-center py-3",
+            collapsed ? "justify-center px-0" : "gap-3 px-4"
+          )}
+        >
+          <div className="w-8 h-8 rounded-full bg-[#2d5073] flex items-center justify-center text-white text-sm font-medium flex-shrink-0">
             JD
           </div>
-          {!isCollapsed && (
+          {!collapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">John Doe</p>
-              <p className="text-xs text-gray-500 truncate">Product Manager</p>
+              <p className="text-sm font-medium text-white truncate">{name}</p>
             </div>
           )}
-        </div>
-
-        <div
-          onClick={onLogout}
-          className={cn(
-            'mt-2 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer',
-            isCollapsed ? 'flex justify-center p-3' : 'flex items-center gap-2 px-4 py-3 text-sm font-medium'
-          )}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              onLogout();
-            }
-          }}
-          title={isCollapsed ? 'Log Out' : undefined}
-          aria-label="Log Out"
-        >
-          <LogOut className="w-5 h-5" />
-          {!isCollapsed && <span>Log Out</span>}
         </div>
       </div>
     </aside>
