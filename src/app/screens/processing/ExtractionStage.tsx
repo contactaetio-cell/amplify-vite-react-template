@@ -10,14 +10,13 @@ interface ExtractionStageProps {
 }
 
 async function runExtractionPipeline(user: string, file: File): Promise<Insight[]> {
-  const { path: s3Path, url: s3Url } = await uploadExtractionFileToS3(user, file);
+  const [s3Url] = await uploadExtractionFileToS3(user, [file]);
 
   // TODO(backend): Send `s3Url` to the `extractInsights` function once implemented.
   // Example shape:
   // const extractedInsights = await extractInsights({ s3Url });
 
   // TODO(frontend): Return/map `extractedInsights` to Insight[] and store in UI state.
-  void s3Path;
   void s3Url;
   return [];
 }

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -18,6 +18,7 @@ import { ManualInsightForm } from './ManualInsightForm';
 import { UploadedFile, UploadMode } from './types';
 import { uploadExtractionFileToS3 } from '../../api/storage';
 import type { Insight } from '../../data/mockData';
+import { getCurrentUser } from "aws-amplify/auth";
 
 type ExtractionInput = {
   contextFiles: File[];
@@ -25,28 +26,26 @@ type ExtractionInput = {
   rawDataFiles: File[];
 };
 
-async function uploadFilesToS3(files: File[]) {
-  return Promise.all(files.map((file) => uploadExtractionFileToS3(file)));
-}
+async function runExtractionPipeline(id: string, input: ExtractionInput): Promise<Insight[]> {
+  if (!id) return [];
 
-async function runExtractionPipeline(input: ExtractionInput): Promise<Insight[]> {
-  const [contextUploads, outputUploads, rawUploads] = await Promise.all([
-    uploadFilesToS3(input.contextFiles),
-    uploadFilesToS3(input.outputFiles),
-    uploadFilesToS3(input.rawDataFiles)
+  const [contextUrls, outputUrls, rawDataUrls] = await Promise.all([
+    uploadExtractionFileToS3(id, input.contextFiles),
+    uploadExtractionFileToS3(id, input.outputFiles),
+    uploadExtractionFileToS3(id, input.rawDataFiles)
   ]);
 
   // TODO(backend): Send the uploaded URLs to the extraction pipeline.
   // Example shape:
   // const extractedInsights = await extractInsights({
-  //   contextUrls: contextUploads.map((u) => u.url),
-  //   outputUrls: outputUploads.map((u) => u.url),
-  //   rawDataUrls: rawUploads.map((u) => u.url)
+  //   contextUrls,
+  //   outputUrls,
+  //   rawDataUrls
   // });
 
-  void contextUploads;
-  void outputUploads;
-  void rawUploads;
+  void contextUrls;
+  void outputUrls;
+  void rawDataUrls;
   return [];
 }
 
@@ -59,11 +58,20 @@ export function UploadResearchTab() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [generatedQueueId, setGeneratedQueueId] = useState('');
+  const [userId, setUserId] = useState<string | null>(null);
 
   const contextFileRef = useRef<HTMLInputElement>(null);
   const outputFileRef = useRef<HTMLInputElement>(null);
   const rawDataFileRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    async function loadUser() {
+      const user = await getCurrentUser();
+      setUserId(user.userId);
+    }
+
+    loadUser();
+  }, []);
   const handleFileSelect = (
     files: FileList | null,
     setter: Dispatch<SetStateAction<UploadedFile[]>>
@@ -126,7 +134,7 @@ export function UploadResearchTab() {
     }
 
     try {
-      await runExtractionPipeline({
+      await runExtractionPipeline(userId, {
         contextFiles: contextUploadFiles,
         outputFiles: outputUploadFiles,
         rawDataFiles: rawUploadFiles

@@ -6,27 +6,24 @@ function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
-export interface UploadedS3Object {
-  path: string;
-  url: string;
-}
+export async function uploadExtractionFileToS3(user: string, files: File[]): Promise<string[]> {
+  const uploads = await Promise.all(
+    files.map(async (file) => {
+      const safeFileName = sanitizeFileName(file.name || 'upload.bin');
+      const path = `${user}/${EXTRACTION_UPLOAD_PREFIX}/${crypto.randomUUID()}-${safeFileName}`;
 
-export async function uploadExtractionFileToS3(user: string, file: File): Promise<UploadedS3Object> {
-  const safeFileName = sanitizeFileName(file.name || 'upload.bin');
-  const path = `${user}/${EXTRACTION_UPLOAD_PREFIX}/${crypto.randomUUID()}-${safeFileName}`;
+      await uploadData({
+        path,
+        data: file,
+        options: {
+          contentType: file.type || 'application/octet-stream',
+        },
+      }).result;
 
-  await uploadData({
-    path,
-    data: file,
-    options: {
-      contentType: file.type || 'application/octet-stream',
-    },
-  }).result;
+      const { url } = await getUrl({ path });
+      return url.toString();
+    })
+  );
 
-  const { url } = await getUrl({ path });
-
-  return {
-    path,
-    url: url.toString(),
-  };
+  return uploads;
 }
