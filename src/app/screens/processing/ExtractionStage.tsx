@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { Insight } from '../../data/mockData';
 import { uploadExtractionFileToS3 } from '../../api/storage';
+import { getCurrentUser } from "aws-amplify/auth";
 
 interface ExtractionStageProps {
   selectedFile?: File | null;
   onContinue: () => void;
 }
 
-async function runExtractionPipeline(file: File): Promise<Insight[]> {
-  const { path: s3Path, url: s3Url } = await uploadExtractionFileToS3(file);
+async function runExtractionPipeline(user: string, file: File): Promise<Insight[]> {
+  const { path: s3Path, url: s3Url } = await uploadExtractionFileToS3(user, file);
 
   // TODO(backend): Send `s3Url` to the `extractInsights` function once implemented.
   // Example shape:
@@ -27,19 +28,21 @@ export function ExtractionStage({
 }: ExtractionStageProps) {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+
   const hasNavigatedRef = useRef(false);
 
   useEffect(() => {
     hasNavigatedRef.current = false;
 
-    if (!selectedFile) {
+    if (!selectedFile || !userId) {
       setInsights([]);
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
-    runExtractionPipeline(selectedFile)
+    runExtractionPipeline(userId, selectedFile)
       .then((nextInsights) => {
         setInsights(nextInsights);
       })
@@ -53,7 +56,14 @@ export function ExtractionStage({
     hasNavigatedRef.current = true;
     onContinue();
   }, [selectedFile, isLoading, onContinue]);
+  useEffect(() => {
+    async function loadUser() {
+      const user = await getCurrentUser();
+      setUserId(user.userId);
+    }
 
+    loadUser();
+  }, []);
   if (!selectedFile) {
     return (
       <div className="flex-1 overflow-auto bg-gray-50">

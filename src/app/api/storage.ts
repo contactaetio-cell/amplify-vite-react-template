@@ -11,9 +11,9 @@ export interface UploadedS3Object {
   url: string;
 }
 
-export async function uploadExtractionFileToS3(file: File): Promise<UploadedS3Object> {
+export async function uploadExtractionFileToS3(user: string, file: File): Promise<UploadedS3Object> {
   const safeFileName = sanitizeFileName(file.name || 'upload.bin');
-  const path = `${EXTRACTION_UPLOAD_PREFIX}/${crypto.randomUUID()}-${safeFileName}`;
+  const path = `${user}/${EXTRACTION_UPLOAD_PREFIX}/${crypto.randomUUID()}-${safeFileName}`;
 
   await uploadData({
     path,
