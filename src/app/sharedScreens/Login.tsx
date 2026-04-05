@@ -1,17 +1,3 @@
-import { motion } from "motion/react";
-import { Link } from "react-router";
-import { Logo } from "../components/Logo";
-import {
-  Eye,
-  EyeOff,
-  Mail,
-  Lock,
-  User,
-  Building2,
-  ArrowRight,
-  Shield,
-} from "lucide-react";
-
 import { Authenticator } from "@aws-amplify/ui-react";
 import { Navigate } from "react-router";
 import { useAuthenticator } from "@aws-amplify/ui-react";

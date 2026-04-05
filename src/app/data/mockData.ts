@@ -683,9 +683,11 @@ export const mockUploadHistory = [
 
 // For Home page - insights organized by category
 export const getTrendingInsights = (days: number = 7) => {
-  // Simulate filtering by views
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - days);
+
   return mockInsights
-    .filter(i => i.views && i.views > 100)
+    .filter(i => new Date(i.date) >= cutoffDate && i.views && i.views > 100)
     .sort((a, b) => (b.views || 0) - (a.views || 0))
     .slice(0, 6);
 };
@@ -701,9 +703,11 @@ export const getRecentInsights = (days: number = 7) => {
 };
 
 export const getTopInsights = (days: number = 7) => {
-  // Simulate filtering by confidence + views
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - days);
+
   return mockInsights
-    .filter(i => i.confidence > 0.85)
+    .filter(i => new Date(i.date) >= cutoffDate && i.confidence > 0.85)
     .sort((a, b) => {
       const scoreA = a.confidence * (a.views || 0);
       const scoreB = b.confidence * (b.views || 0);

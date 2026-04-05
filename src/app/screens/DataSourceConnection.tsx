@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge } from '../components/ui/badge';
 import { Clock, History, Upload } from 'lucide-react';
 import { ApprovalReviewQueueTab } from './data-source-connection/ApprovalReviewQueueTab';
 import { UploadHistoryTab } from './data-source-connection/UploadHistoryTab';
 import { UploadResearchTab } from './data-source-connection/UploadResearchTab';
-import { mockQueueItems } from './data-source-connection/mockData';
+import type { Insight } from './data-source-connection/types';
+import { getCurrentUser } from 'aws-amplify/auth';
+import { fetchTopLevelInsightsByUser } from '../api/insights';
+import { useLocation, useNavigate, useParams } from 'react-router';
 
 interface DataSourceConnectionProps {
   onSelectSource: (sourceId: string) => void;
@@ -14,7 +17,57 @@ interface DataSourceConnectionProps {
 type Tab = 'upload' | 'approval' | 'history';
 
 export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSourceConnectionProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('upload');
+  void onSelectSource;
+  void onManualEntry;
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { tab, insightId } = useParams();
+  const [insights, setInsights] = useState<Insight[]>([]);
+  const [queueLoading, setQueueLoading] = useState(true);
+
+  const activeTab: Tab =
+    location.pathname.includes('/dashboard/ingestion/approval-review-queue')
+      ? 'approval'
+      : tab === 'approval-review-queue'
+      ? 'approval'
+      : tab === 'upload-history'
+        ? 'history'
+        : 'upload';
+
+  const ingestionBasePath = '/dashboard/ingestion';
+  const uploadPath = `${ingestionBasePath}/add-new-insight`;
+  const approvalPath = `${ingestionBasePath}/approval-review-queue`;
+  const historyPath = `${ingestionBasePath}/upload-history`;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadQueue() {
+      try {
+        const user = await getCurrentUser();
+        const rootInsights = await fetchTopLevelInsightsByUser(user.userId, 'Pending');
+
+        if (isMounted) {
+          setInsights(rootInsights);
+        }
+      } catch (error) {
+        console.error('Failed to load queue insights', error);
+        if (isMounted) {
+          setInsights([]);
+        }
+      } finally {
+        if (isMounted) {
+          setQueueLoading(false);
+        }
+      }
+    }
+
+    void loadQueue();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <div className="flex-1 overflow-auto bg-gray-50">
@@ -28,7 +81,7 @@ export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSour
 
         <div className="flex gap-1 mb-8 bg-white rounded-lg p-1 border border-gray-200 w-fit">
           <button
-            onClick={() => setActiveTab('upload')}
+            onClick={() => navigate(uploadPath)}
             className={`px-6 py-2.5 rounded-md text-sm font-medium transition-all ${
               activeTab === 'upload'
                 ? 'bg-blue-50 text-blue-700'
@@ -41,7 +94,7 @@ export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSour
             </div>
           </button>
           <button
-            onClick={() => setActiveTab('approval')}
+            onClick={() => navigate(approvalPath)}
             className={`px-6 py-2.5 rounded-md text-sm font-medium transition-all ${
               activeTab === 'approval'
                 ? 'bg-blue-50 text-blue-700'
@@ -52,12 +105,12 @@ export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSour
               <Clock className="w-4 h-4" />
               Approval Review Queue
               <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-300">
-                {mockQueueItems.length}
+                {queueLoading ? '...' : insights.length}
               </Badge>
             </div>
           </button>
           <button
-            onClick={() => setActiveTab('history')}
+            onClick={() => navigate(historyPath)}
             className={`px-6 py-2.5 rounded-md text-sm font-medium transition-all ${
               activeTab === 'history'
                 ? 'bg-blue-50 text-blue-700'
@@ -73,7 +126,17 @@ export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSour
 
         <div className="pb-8">
           {activeTab === 'upload' && <UploadResearchTab />}
-          {activeTab === 'approval' && <ApprovalReviewQueueTab />}
+          {activeTab === 'approval' && (
+            <ApprovalReviewQueueTab
+              insights={insights}
+              selectedInsightId={insightId}
+              onSelectInsight={(selectedId) => navigate(`${approvalPath}/${selectedId}`)}
+              onBackToQueue={() => navigate(approvalPath)}
+              onDeleteInsight={(deletedInsightId) =>
+                setInsights((prev) => prev.filter((item) => item.insight_id !== deletedInsightId))
+              }
+            />
+          )}
           {activeTab === 'history' && <UploadHistoryTab />}
         </div>
       </div>

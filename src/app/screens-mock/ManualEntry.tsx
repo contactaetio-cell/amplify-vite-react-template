@@ -17,7 +17,6 @@ import {
   FileText,
   Upload,
   X,
-  FileIcon,
   CheckCircle2,
   Plus,
   Trash2,

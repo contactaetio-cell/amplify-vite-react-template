@@ -17,8 +17,14 @@ import { toast } from 'sonner';
 import { ManualInsightForm } from './ManualInsightForm';
 import { UploadedFile, UploadMode } from './types';
 import { uploadExtractionFileToS3 } from '../../api/storage';
+import { generateInsights } from '../../api/insights';
 import type { Insight } from '../../data/mockData';
-import { getCurrentUser } from "aws-amplify/auth";
+import { fetchUserAttributes, getCurrentUser } from "aws-amplify/auth";
+
+type UserInfoPayload = {
+  full_name?: string;
+  email_address?: string;
+};
 
 type ExtractionInput = {
   contextFiles: File[];
@@ -26,7 +32,13 @@ type ExtractionInput = {
   rawDataFiles: File[];
 };
 
-async function runExtractionPipeline(id: string, input: ExtractionInput): Promise<Insight[]> {
+async function runExtractionPipeline(
+  id: string,
+  userInfo: UserInfoPayload | undefined,
+  input: ExtractionInput,
+  uploadMode: UploadMode,
+  researchContext: string
+): Promise<Insight[]> {
   if (!id) return [];
 
   const [contextUrls, outputUrls, rawDataUrls] = await Promise.all([
@@ -34,15 +46,15 @@ async function runExtractionPipeline(id: string, input: ExtractionInput): Promis
     uploadExtractionFileToS3(id, input.outputFiles),
     uploadExtractionFileToS3(id, input.rawDataFiles)
   ]);
-
-  // TODO(backend): Send the uploaded URLs to the extraction pipeline.
-  // Example shape:
-  // const extractedInsights = await extractInsights({
-  //   contextUrls,
-  //   outputUrls,
-  //   rawDataUrls
-  // });
-
+  await generateInsights({
+    userId: id,
+    user_info: userInfo,
+    uploadMode,
+    researchContext,
+    contextUrls,
+    outputUrls,
+    rawDataUrls
+  });
   void contextUrls;
   void outputUrls;
   void rawDataUrls;
@@ -59,15 +71,22 @@ export function UploadResearchTab() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [generatedQueueId, setGeneratedQueueId] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
+  const [userInfo, setUserInfo] = useState<UserInfoPayload | undefined>(undefined);
 
   const contextFileRef = useRef<HTMLInputElement>(null);
   const outputFileRef = useRef<HTMLInputElement>(null);
   const rawDataFileRef = useRef<HTMLInputElement>(null);
 
+
   useEffect(() => {
     async function loadUser() {
       const user = await getCurrentUser();
       setUserId(user.userId);
+      const attributes = await fetchUserAttributes();
+      setUserInfo({
+        full_name: attributes.name ?? attributes.preferred_username ?? undefined,
+        email_address: attributes.email ?? undefined,
+      });
     }
 
     loadUser();
@@ -112,7 +131,7 @@ export function UploadResearchTab() {
   const canSubmit = (researchContext.trim().length > 0 || contextFiles.length > 0) && outputFiles.length > 0;
 
   const handleSubmit = async () => {
-    if (!canSubmit) return;
+    if (!canSubmit || !userId) return;
     setIsSubmitting(true);
 
     const contextUploadFiles = contextFiles
@@ -134,11 +153,17 @@ export function UploadResearchTab() {
     }
 
     try {
-      await runExtractionPipeline(userId, {
-        contextFiles: contextUploadFiles,
-        outputFiles: outputUploadFiles,
-        rawDataFiles: rawUploadFiles
-      });
+      await runExtractionPipeline(
+        userId,
+        userInfo,
+        {
+          contextFiles: contextUploadFiles,
+          outputFiles: outputUploadFiles,
+          rawDataFiles: rawUploadFiles
+        },
+        uploadMode,
+        researchContext
+      );
 
       const queueId = `QUEUE-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
 

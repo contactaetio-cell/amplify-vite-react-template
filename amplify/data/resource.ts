@@ -1,5 +1,4 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
-import { sayHello } from "../functions/say-hello/resource"
 import { generateInsights } from "../functions/generate-insights/resource";
 /*== STEP 1 ===============================================================
 The section below creates a Todo database table with a "content" field. Try
@@ -8,14 +7,38 @@ specifies that any user authenticated via an API key can "create", "read",
 "update", and "delete" any "Todo" records.
 =========================================================================*/
 const schema = a.schema({ 
-  sayHello: a
-    .query()
-    .arguments({
-      name: a.string(),
-    })
-    .returns(a.string())
-    .authorization(allow => [allow.guest()])
-    .handler(a.handler.function(sayHello)),
+Insight: a.customType({
+    insight_id: a.string().required(),
+    parent_insight_id: a.string(),
+    project_id: a.string(),
+    organization_id: a.string(),
+    createdAt: a.datetime(),
+    updatedAt: a.datetime(),
+    text: a.string().required(),
+    family_text: a.string(),
+    question_answered: a.string(),
+    summary: a.string(),
+    filters: a.string().array(),
+    document_ids: a.string().array(),
+    source_types: a.string().array(),
+    evidence_snippet: a.string(),
+    supporting_chunks: a.json().array(), // [{chunk_id, paragraph_index?, line_index?}]
+    findings: a.json().array(),
+    metadata: a.json().array(), // [{tag, value, confidence}]
+    confidence: a.customType({
+      score: a.float(),
+      reasoning: a.string(),
+    }),
+    additional_refs: a.json(),
+    user_id: a.string(),
+    user_info: a.customType({
+      full_name: a.string(),
+      email_address: a.string(),
+    }),
+    status: a.string(),
+    s3_node: a.string().required(),
+    document_id: a.string().required(),
+  }), 
   generateInsights: a
     .mutation()
     .arguments({
@@ -24,9 +47,26 @@ const schema = a.schema({
       contextUrls: a.string().array(),
       outputUrls: a.string().array(),
       rawDataUrls: a.string().array(),
+      userId: a.string(),
+      user_info: a.customType({
+        full_name: a.string(),
+        email_address: a.string(),
+      }),
+      userInfo: a.customType({
+        full_name: a.string(),
+        email_address: a.string(),
+      }),
+      image_blocks: a
+        .customType({
+          block_id: a.string().required(),
+          image_s3: a.string().required(),
+          page: a.integer().required(),
+        })
+        .array(),
+      document_id: a.string(),
     })
     .returns(a.string())
-    .authorization(allow => [allow.guest()])
+    .authorization(allow => [allow.guest(), allow.authenticated(), allow.publicApiKey()])
     .handler(a.handler.function(generateInsights)),
 });
 

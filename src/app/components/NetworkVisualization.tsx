@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export function NetworkVisualization() {
   const [nodes] = useState(() => 

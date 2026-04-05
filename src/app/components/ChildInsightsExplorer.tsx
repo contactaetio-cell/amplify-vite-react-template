@@ -9,19 +9,79 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '../components/ui/select';
-import { Insight, getChildInsights, getInsightById } from '../data/mockData';
+import { Insight, getChildInsights } from '../data/mockData';
 import { TrendingUp, ExternalLink, BarChart3, Filter } from 'lucide-react';
 
 interface ChildInsightsExplorerProps {
   rootInsight: Insight;
+  childInsights?: Insight[];
   onViewInsight: (id: string) => void;
 }
 
-export function ChildInsightsExplorer({ rootInsight, onViewInsight }: ChildInsightsExplorerProps) {
+function normalizeDimensionValue(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return null;
+}
+
+function deriveDimensionsFromChildren(children: Insight[]) {
+  const dimensionValueMap = new Map<string, Set<string>>();
+
+  children.forEach((child) => {
+    if (!child.dimensions) return;
+    Object.entries(child.dimensions).forEach(([name, value]) => {
+      const normalizedValue = normalizeDimensionValue(value);
+      if (!normalizedValue) return;
+      if (!dimensionValueMap.has(name)) {
+        dimensionValueMap.set(name, new Set<string>());
+      }
+      dimensionValueMap.get(name)?.add(normalizedValue);
+    });
+  });
+
+  return Array.from(dimensionValueMap.entries())
+    .map(([name, values]) => ({
+      id: `derived-${name.toLowerCase().replace(/\s+/g, '-')}`,
+      name,
+      values: Array.from(values).sort((a, b) => a.localeCompare(b)),
+    }))
+    .filter((dimension) => dimension.values.length > 0);
+}
+
+function normalizeDimensions(dimensions: Insight['availableDimensions']) {
+  if (!dimensions || dimensions.length === 0) return [];
+
+  return dimensions
+    .map((dimension) => {
+      const values = dimension.values
+        .map((value) => normalizeDimensionValue(value))
+        .filter((value): value is string => Boolean(value))
+        .sort((a, b) => a.localeCompare(b));
+
+      return {
+        ...dimension,
+        values,
+      };
+    })
+    .filter((dimension) => dimension.values.length > 0);
+}
+
+export function ChildInsightsExplorer({ rootInsight, childInsights, onViewInsight }: ChildInsightsExplorerProps) {
   const [selectedFilters, setSelectedFilters] = useState<{ [key: string]: string }>({});
   
   // Get all child insights
-  const allChildInsights = getChildInsights(rootInsight.id);
+  const allChildInsights = childInsights ?? getChildInsights(rootInsight.id);
+  const normalizedRootDimensions = normalizeDimensions(rootInsight.availableDimensions);
+  const availableDimensions =
+    normalizedRootDimensions.length > 0
+      ? normalizedRootDimensions
+      : deriveDimensionsFromChildren(allChildInsights);
   
   // Filter child insights based on selected dimension filters
   const filteredChildInsights = allChildInsights.filter(child => {
@@ -31,7 +91,7 @@ export function ChildInsightsExplorer({ rootInsight, onViewInsight }: ChildInsig
     
     // Match all selected filters
     return Object.entries(selectedFilters).every(([dimension, value]) => {
-      return child.dimensions?.[dimension] === value;
+      return normalizeDimensionValue(child.dimensions?.[dimension]) === value;
     });
   });
   
@@ -52,7 +112,7 @@ export function ChildInsightsExplorer({ rootInsight, onViewInsight }: ChildInsig
     setSelectedFilters({});
   };
   
-  if (!rootInsight.isRootInsight || !rootInsight.childInsightIds || rootInsight.childInsightIds.length === 0) {
+  if (!rootInsight.childInsightIds || rootInsight.childInsightIds.length === 0) {
     return null;
   }
   
@@ -69,7 +129,7 @@ export function ChildInsightsExplorer({ rootInsight, onViewInsight }: ChildInsig
       </div>
       
       {/* Dimension Filters */}
-      {rootInsight.availableDimensions && rootInsight.availableDimensions.length > 0 && (
+      {availableDimensions.length > 0 && (
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
             <Filter className="w-4 h-4 text-gray-500" />
@@ -77,7 +137,7 @@ export function ChildInsightsExplorer({ rootInsight, onViewInsight }: ChildInsig
           </div>
           
           <div className="grid grid-cols-2 gap-3">
-            {rootInsight.availableDimensions.map((dimension) => (
+            {availableDimensions.map((dimension) => (
               <div key={dimension.id}>
                 <label className="text-xs text-gray-600 mb-1 block">{dimension.name}</label>
                 <Select
@@ -142,14 +202,14 @@ export function ChildInsightsExplorer({ rootInsight, onViewInsight }: ChildInsig
                 onClick={() => onViewInsight(child.id)}
               >
                 <div className="flex items-start justify-between gap-3 mb-2">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900 mb-2">{child.statement}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 mb-2 whitespace-normal break-words">{child.statement}</p>
                     
                     {/* Dimension badges */}
                     {child.dimensions && (
                       <div className="flex flex-wrap gap-2 mb-2">
                         {Object.entries(child.dimensions).map(([key, value]) => (
-                          <Badge key={key} variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-xs">
+                          <Badge key={key} variant="outline" className="max-w-full bg-purple-50 text-purple-700 border-purple-200 text-xs whitespace-normal break-all">
                             {key}: {value}
                           </Badge>
                         ))}
@@ -158,7 +218,7 @@ export function ChildInsightsExplorer({ rootInsight, onViewInsight }: ChildInsig
                     
                     {/* Key data point */}
                     {child.dataPoints && child.dataPoints.length > 0 && (
-                      <p className="text-xs text-gray-600">
+                      <p className="text-xs text-gray-600 whitespace-normal break-words">
                         {child.dataPoints[0].value}
                       </p>
                     )}
@@ -206,7 +266,7 @@ export function ChildInsightsExplorer({ rootInsight, onViewInsight }: ChildInsig
           </div>
           <div className="text-center">
             <p className="text-2xl font-semibold text-gray-900">
-              {rootInsight.availableDimensions?.length || 0}
+              {availableDimensions.length}
             </p>
             <p className="text-xs text-gray-600 mt-1">Dimensions</p>
           </div>

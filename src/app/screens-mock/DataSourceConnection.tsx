@@ -203,6 +203,8 @@ const mockProcessedUploads: ProcessedUpload[] = [
 ];
 
 export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSourceConnectionProps) {
+  void onSelectSource;
+  void onManualEntry;
   const [activeTab, setActiveTab] = useState<Tab>('upload');
   const [uploadMode, setUploadMode] = useState<UploadMode>('document');
   

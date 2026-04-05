@@ -11,7 +11,6 @@ interface FinalValidationProps {
 
 export function FinalValidation({ onPublish, onEdit }: FinalValidationProps) {
   const approvedInsights = mockExtractedInsights.filter(i => i.approvalStatus === 'approved');
-  const totalInsights = mockExtractedInsights.length;
 
   return (
     <div className="flex-1 overflow-auto bg-gray-50">

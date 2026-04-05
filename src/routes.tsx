@@ -27,7 +27,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/mock/dashboard",
-    element: <Navigate to={mockScreenPaths.MockApp} replace />,
+    element: <MockApp />,
   },
   {
     path: "/mock/dashboard/:screen",
@@ -39,7 +39,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/mock",
-    element: <Navigate to={mockScreenPaths.MockApp} replace />,
+    element: <Navigate to="/mock/dashboard" replace />,
   },
   ...mockScreenRouteEntries,
   {
@@ -55,7 +55,39 @@ export const router = createBrowserRouter([
     ),
   },
   {
+    path: "/dashboard/insights",
+    element: (
+      <AuthGate>
+        <Dashboard />
+      </AuthGate>
+    ),
+  },
+  {
+    path: "/dashboard/my-insights",
+    element: (
+      <AuthGate>
+        <Dashboard />
+      </AuthGate>
+    ),
+  },
+  {
     path: "/dashboard/:screen",
+    element: (
+      <AuthGate>
+        <Dashboard />
+      </AuthGate>
+    ),
+  },
+  {
+    path: "/dashboard/ingestion/:tab",
+    element: (
+      <AuthGate>
+        <Dashboard />
+      </AuthGate>
+    ),
+  },
+  {
+    path: "/dashboard/ingestion/approval-review-queue/:insightId",
     element: (
       <AuthGate>
         <Dashboard />

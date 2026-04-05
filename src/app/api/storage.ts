@@ -10,7 +10,7 @@ export async function uploadExtractionFileToS3(user: string, files: File[]): Pro
   const uploads = await Promise.all(
     files.map(async (file) => {
       const safeFileName = sanitizeFileName(file.name || 'upload.bin');
-      const path = `${user}/${EXTRACTION_UPLOAD_PREFIX}/${crypto.randomUUID()}-${safeFileName}`;
+      const path = `${EXTRACTION_UPLOAD_PREFIX}/${user}/${crypto.randomUUID()}-${safeFileName}`;
 
       await uploadData({
         path,

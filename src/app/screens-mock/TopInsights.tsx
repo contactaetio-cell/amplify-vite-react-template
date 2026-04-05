@@ -14,13 +14,6 @@ interface TopInsightsProps {
 type TimeVintage = '7d' | '30d' | '90d' | '1y';
 type Category = 'trending' | 'recent' | 'top';
 
-const timeVintageLabels = {
-  '7d': 'Last 7 days',
-  '30d': 'Last 30 days',
-  '90d': 'Last 90 days',
-  '1y': 'Last year'
-};
-
 export function TopInsights({ onViewInsight, onBack }: TopInsightsProps) {
   const [category, setCategory] = useState<Category>('trending');
   const [timeVintage, setTimeVintage] = useState<TimeVintage>('7d');

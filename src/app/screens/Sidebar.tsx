@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, Upload, HelpCircle, Settings, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { LayoutDashboard, Upload, HelpCircle, Settings, PanelLeftClose, PanelLeft, LogOut } from 'lucide-react';
 import { cn } from '../components/ui/utils';
-import { fetchUserAttributes } from "aws-amplify/auth";
+import { fetchUserAttributes, signOut } from "aws-amplify/auth";
+import { useNavigate } from 'react-router';
 
 interface SidebarProps {
   currentScreen: string;
@@ -18,14 +19,13 @@ const navItems = [
 export function Sidebar({ currentScreen, onNavigate }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [name, setName] = useState<string>("");
-  const [picture, setPicture] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     async function loadUser() {
       try {
         const attributes = await fetchUserAttributes();
         setName(attributes.given_name ?? attributes.email ?? "User");
-        setPicture(attributes.picture ?? null);
       } catch (err) {
         console.error("Failed to fetch user attributes", err);
       }
@@ -33,6 +33,15 @@ export function Sidebar({ currentScreen, onNavigate }: SidebarProps) {
 
     loadUser();
   }, []);
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      navigate('/login', { replace: true });
+    } catch (err) {
+      console.error("Failed to sign out", err);
+    }
+  };
 
   return (
     <aside
@@ -107,6 +116,21 @@ export function Sidebar({ currentScreen, onNavigate }: SidebarProps) {
           })}
         </ul>
       </nav>
+
+      {/* Sign out section */}
+      <div className="p-3 border-t border-[#234060]">
+        <button
+          onClick={() => void handleSignOut()}
+          title={collapsed ? 'Sign out' : undefined}
+          className={cn(
+            "w-full flex items-center rounded-lg text-sm text-[#a8c9e8] hover:bg-[#1a2f4d] hover:text-white transition-colors",
+            collapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
+          )}
+        >
+          <LogOut className="w-5 h-5 flex-shrink-0" />
+          {!collapsed && <span className="truncate">Sign out</span>}
+        </button>
+      </div>
 
       {/* User section */}
       <div className="p-3 border-t border-[#234060]">

@@ -3,9 +3,13 @@ import { Logo } from "./Logo";
 import { Menu } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
+import { useAuthenticator } from "@aws-amplify/ui-react";
 
 export function Navigation() {
   const [isOpen, setIsOpen] = useState(false);
+  const { authStatus } = useAuthenticator((context) => [context.authStatus]);
+  const authCtaLabel = authStatus === "authenticated" ? "Dashboard" : "Log In";
+  const authCtaPath = authStatus === "authenticated" ? "/dashboard/home" : "/login";
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-aetio-blue-950/90 backdrop-blur-lg border-b border-aetio-blue-900/50">
@@ -18,10 +22,10 @@ export function Navigation() {
           {/* Desktop navigation */}
           <div className="hidden md:flex items-center gap-4">
             <Link
-              to="/login"
+              to={authCtaPath}
               className="px-4 py-2 text-aetio-blue-200 hover:text-white text-sm transition-colors"
             >
-              Log In
+              {authCtaLabel}
             </Link>
             <motion.a
               href="mailto:contactaetio@gmail.com?subject=Request%20Demo&body=Hi%2C%20I%27d%20like%20to%20request%20a%20demo%20of%20Aetio."
@@ -52,10 +56,10 @@ export function Navigation() {
           >
             <div className="flex flex-col gap-2">
               <Link
-                to="/login"
+                to={authCtaPath}
                 className="px-5 py-2 text-aetio-blue-200 hover:text-white text-sm transition-colors text-center"
               >
-                Log In
+                {authCtaLabel}
               </Link>
               <a
                 href="mailto:contactaetio@gmail.com?subject=Request%20Demo&body=Hi%2C%20I%27d%20like%20to%20request%20a%20demo%20of%20Aetio."
