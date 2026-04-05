@@ -1,5 +1,10 @@
 import { fetchAuthSession } from "aws-amplify/auth";
-import type { Insight, InsightFamilyData, MetadataEntry } from '../screens/data-source-connection/types';
+import type {
+  Insight,
+  InsightFamilyData,
+  InsightFamilyDataRow,
+  MetadataEntry,
+} from '../screens/data-source-connection/types';
 
 type InsightsResponse = {
   count: number;
@@ -190,9 +195,22 @@ export type InsightsFilters = {
 };
 
 export type UpdateInsightPayload = {
+  createdAt?: string;
   text?: string;
   summary?: string;
+  status?: string;
   metadata?: MetadataEntry[];
+  additional_refs?: unknown;
+  user_info?: {
+    full_name?: string;
+    email_address?: string;
+  };
+};
+
+export type UpdateInsightFamilyDataPayload = {
+  dimensions?: string[];
+  metric_columns?: string[];
+  rows?: InsightFamilyDataRow[];
 };
 
 const BACKEND_URL =
@@ -492,6 +510,56 @@ export async function updateInsightById(
 
   logInsightsDebug('updateInsightById', 'Completed successfully', { insightId });
   return parsed.insight;
+}
+
+export async function updateInsightFamilyDataById(
+  tableId: string,
+  payload: UpdateInsightFamilyDataPayload,
+): Promise<InsightFamilyData> {
+  logInsightsDebug('updateInsightFamilyDataById', 'Started', { tableId, payloadKeys: Object.keys(payload) });
+  const url = new URL(`/insight-family-data/${encodeURIComponent(tableId)}`, BACKEND_URL);
+  const headers = await buildAuthHeaders({
+    "Content-Type": "application/json",
+  });
+
+  logInsightsDebug('updateInsightFamilyDataById', 'Sending PATCH request', { url: url.toString() });
+  const response = await fetch(url.toString(), {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  logInsightsDebug('updateInsightFamilyDataById', 'Received response', {
+    status: response.status,
+    ok: response.ok,
+  });
+
+  const text = await response.text();
+  let data: unknown = null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    logInsightsError('updateInsightFamilyDataById', 'Backend returned error response', {
+      status: response.status,
+      responsePreview: text.slice(0, 300),
+    });
+    throw new Error(`Failed to update insight family data: ${response.status} ${text}`);
+  }
+
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("Invalid insight family data update response");
+  }
+
+  const parsed = data as { data?: InsightFamilyData };
+  if (!parsed.data || typeof parsed.data !== "object" || Array.isArray(parsed.data)) {
+    throw new Error("Invalid insight family data update response");
+  }
+
+  logInsightsDebug('updateInsightFamilyDataById', 'Completed successfully', { tableId });
+  return parsed.data;
 }
 
 export async function acceptInsights(projectId: string, insights: Insight[]): Promise<void> {

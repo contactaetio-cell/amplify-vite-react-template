@@ -41,6 +41,7 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const { screen, insightId } = useParams();
+  const isApprovalReviewInsightRoute = location.pathname.startsWith('/dashboard/ingestion/approval-review-queue/');
 
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [selectedInsightId, setSelectedInsightId] = useState<string>('');
@@ -49,6 +50,12 @@ export default function App() {
     const path = location.pathname;
 
     if (path.startsWith('/insight/')) {
+      if (insightId) setSelectedInsightId(insightId);
+      setCurrentScreen('insight-detail');
+      return;
+    }
+
+    if (path.startsWith('/dashboard/ingestion/approval-review-queue/')) {
       if (insightId) setSelectedInsightId(insightId);
       setCurrentScreen('insight-detail');
       return;
@@ -127,6 +134,10 @@ export default function App() {
     navigate('/dashboard/home');
   };
 
+  const handleApprovalReviewInsightBack = () => {
+    navigate('/dashboard/ingestion/approval-review-queue');
+  };
+
   const handlePublish = () => {
     toast.success('Insight published successfully!');
     setCurrentScreen('home');
@@ -172,8 +183,9 @@ export default function App() {
         return (
           <InsightDetail
             insightId={selectedInsightId}
-            onBack={handleInsightBack}
+            onBack={isApprovalReviewInsightRoute ? handleApprovalReviewInsightBack : handleInsightBack}
             onViewRelated={handleViewInsight}
+            forceEditMode={isApprovalReviewInsightRoute}
           />
         );
       
