@@ -80,7 +80,7 @@ export function UseCasesSection() {
           className="text-center mb-8"
         >
           <h2 className="text-4xl md:text-5xl font-bold text-aetio-blue-950 mb-4">
-            Scales as You Grow
+            Scale as You Grow
           </h2>
           <p className="text-xl text-aetio-blue-600 max-w-2xl mx-auto">
             From a single team to the entire enterprise — Aetio grows with you.
@@ -88,7 +88,7 @@ export function UseCasesSection() {
         </motion.div>
 
         {/* Horizontal progress indicator */}
-        <div ref={progressRef} className="mb-16 max-w-3xl mx-auto">
+        <div ref={progressRef} className="mb-10 max-w-3xl mx-auto">
           {/* Progress bar */}
           <div className="relative h-1.5 bg-aetio-blue-100 rounded-full overflow-hidden mb-4">
             <motion.div
@@ -143,99 +143,44 @@ export function UseCasesSection() {
           </div>
         </div>
 
-        {/* Growth journey timeline */}
-        <div className="relative">
-          {/* Connecting line */}
-          <div className="hidden lg:block absolute left-1/2 top-0 bottom-0 w-px bg-gradient-to-b from-aetio-blue-200 via-aetio-blue-400 to-emerald-400/40" />
+        {/* Growth journey cards */}
+        <div className="grid md:grid-cols-2 gap-6">
+          {stages.map((stage, index) => (
+            <motion.div
+              key={stage.label}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: index * 0.08 }}
+              className="bg-aetio-blue-50 border border-aetio-blue-200 rounded-xl p-6 hover:border-aetio-blue-400/60 hover:shadow-md transition-all"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-white border border-aetio-blue-300 flex items-center justify-center">
+                  <stage.icon className="w-5 h-5 text-aetio-blue-600" />
+                </div>
+                <div>
+                  <span className="text-xs font-semibold tracking-widest uppercase text-aetio-blue-600">
+                    {stage.label}
+                  </span>
+                  <p className="text-xs text-aetio-blue-400">{stage.size}</p>
+                </div>
+              </div>
 
-          <div className="flex flex-col gap-12 lg:gap-16">
-            {stages.map((stage, index) => {
-              const isEven = index % 2 === 0;
-              return (
-                <motion.div
-                  key={stage.label}
-                  initial={{ opacity: 0, x: isEven ? -30 : 30 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6, delay: index * 0.1 }}
-                  className={`relative lg:grid lg:grid-cols-2 lg:gap-16 items-center ${
-                    isEven ? "" : "lg:direction-rtl"
-                  }`}
-                >
-                  {/* Timeline dot — grows with each stage */}
-                  <div
-                    className={`hidden lg:flex absolute left-1/2 -translate-x-1/2 ${stage.dotSize} rounded-full bg-white border-2 border-aetio-blue-400 items-center justify-center z-10 shadow-sm`}
-                  >
-                    <stage.icon
-                      className={`${stage.iconSize} text-aetio-blue-600`}
-                    />
-                  </div>
+              <h3 className="text-2xl font-bold text-aetio-blue-950 mb-3">
+                {stage.title}
+              </h3>
+              <p className="text-aetio-blue-700 mb-5">{stage.description}</p>
 
-                  {/* Card */}
-                  <div
-                    className={`bg-aetio-blue-50 border border-aetio-blue-200 rounded-xl p-8 hover:border-aetio-blue-400/60 hover:shadow-md transition-all ${
-                      isEven
-                        ? "lg:col-start-1 lg:text-right"
-                        : "lg:col-start-2"
-                    }`}
-                  >
-                    {/* Stage badge */}
-                    <div
-                      className={`flex items-center gap-2 mb-4 ${
-                        isEven ? "lg:justify-end" : ""
-                      }`}
-                    >
-                      <div className="lg:hidden w-9 h-9 rounded-full bg-white border border-aetio-blue-300 flex items-center justify-center">
-                        <stage.icon className="w-4 h-4 text-aetio-blue-600" />
-                      </div>
-                      <span className="text-xs font-semibold tracking-widest uppercase text-aetio-blue-600">
-                        {stage.label}
-                      </span>
-                      <span className="text-xs text-aetio-blue-400">
-                        · {stage.size}
-                      </span>
-                    </div>
-
-                    <h3 className="text-2xl font-bold text-aetio-blue-950 mb-3">
-                      {stage.title}
-                    </h3>
-                    <p className="text-aetio-blue-700 mb-5">
-                      {stage.description}
-                    </p>
-
-                    <ul
-                      className={`space-y-2 ${isEven ? "lg:ml-auto" : ""}`}
-                    >
-                      {stage.highlights.map((h, i) => (
-                        <li
-                          key={i}
-                          className={`flex items-start gap-2 text-sm text-aetio-blue-600 ${
-                            isEven ? "lg:flex-row-reverse lg:text-right" : ""
-                          }`}
-                        >
-                          <ArrowRight
-                            className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
-                              isEven ? "lg:rotate-180" : ""
-                            }`}
-                          />
-                          <span>{h}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Empty column for alternating layout */}
-                  <div
-                    className={`hidden lg:block ${
-                      isEven
-                        ? "lg:col-start-2"
-                        : "lg:col-start-1 lg:row-start-1"
-                    }`}
-                  />
-                </motion.div>
-              );
-            })}
-          </div>
+              <ul className="space-y-2">
+                {stage.highlights.map((h, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-aetio-blue-600">
+                    <ArrowRight className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <span>{h}</span>
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
+          ))}
         </div>
       </div>
     </section>

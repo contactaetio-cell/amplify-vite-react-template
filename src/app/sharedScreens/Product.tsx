@@ -125,7 +125,7 @@ export default function Product() {
                   step: "02",
                   title: "Intelligent Organization",
                   description:
-                    "AI extracts, structures, and tags insights with metadata — authors, dates, sources, and topics — creating a fully auditable knowledge graph.",
+                    "Automatically tag and organize insights so nothing gets lost. AI captures metadata like authors, dates, sources, and topics to build a fully auditable knowledge graph.",
                   icon: Network,
                   features: [
                     "AI-powered metadata extraction",
@@ -138,7 +138,7 @@ export default function Product() {
                   step: "03",
                   title: "Instant Discovery",
                   description:
-                    "Search using natural language to find exactly what you need in seconds. Filter by team, date, topic, or any custom metadata.",
+                    "Find any insight in seconds using natural language search. Filter by team, date, topic, or any custom metadata.",
                   icon: Search,
                   features: [
                     "Natural language semantic search",
@@ -204,72 +204,115 @@ export default function Product() {
               </p>
             </motion.div>
 
-            <div className="grid md:grid-cols-2 gap-8">
+            <div className="space-y-12">
               {[
                 {
-                  icon: FileSpreadsheet,
-                  title: "Universal Data Ingestion",
-                  description:
-                    "Import from Excel, BI tools like Tableau and Power BI, and research platforms — all into one unified layer. Native connectors keep everything in sync without manual uploads or data entry.",
+                  category: "Ingestion",
+                  summary: "Bring every source into one trusted pipeline.",
+                  features: [
+                    {
+                      icon: FileSpreadsheet,
+                      title: "Universal Data Ingestion",
+                      description:
+                        "Import from Excel, BI tools like Tableau and Power BI, and research platforms — all into one unified layer. Native connectors keep everything in sync without manual uploads or data entry.",
+                    },
+                    {
+                      icon: Shield,
+                      title: "Enterprise Security & Access Controls",
+                      description:
+                        "Role-based permissions, SSO integration, data encryption at rest and in transit, and compliance-ready infrastructure ensure sensitive research stays protected while remaining accessible.",
+                    },
+                  ],
                 },
                 {
-                  icon: Search,
-                  title: "AI-Powered Semantic Search",
-                  description:
-                    "Go beyond keyword matching. Semantic search understands context, synonyms, and relationships. Ask questions in natural language and get relevant insights instantly — even if the exact words don't match.",
+                  category: "Organization",
+                  summary:
+                    "Structure and govern insights so teams always work from trusted knowledge.",
+                  features: [
+                    {
+                      icon: Tag,
+                      title: "Metadata Tagging & Auditability",
+                      description:
+                        "Every insight is enriched with comprehensive metadata — author, creation date, source system, project tags, and custom fields. Full version history and change tracking for complete traceability.",
+                    },
+                    {
+                      icon: Link2,
+                      title: "Research Traceability",
+                      description:
+                        "Automatically discover connections between related insights. Trace every finding back to original sources, methods, and raw data. Visualize institutional knowledge as an interconnected graph.",
+                    },
+                    {
+                      icon: Network,
+                      title: "Insight Relationships",
+                      description:
+                        "See which research builds on prior work, find contradictions, and identify knowledge gaps. Build compounding knowledge by surfacing existing work before new projects start.",
+                    },
+                    {
+                      icon: BadgeCheck,
+                      title: "Approval Workflows",
+                      description:
+                        "Establish a single, canonical source of truth for every insight with built-in PR and legal approval workflows. Eliminate contradictory communications and ensure every message is aligned.",
+                    },
+                  ],
                 },
                 {
-                  icon: Tag,
-                  title: "Metadata Tagging & Auditability",
-                  description:
-                    "Every insight is enriched with comprehensive metadata — author, creation date, source system, project tags, and custom fields. Full version history and change tracking for complete traceability.",
+                  category: "Discovery",
+                  summary: "Find, share, and apply insights in seconds.",
+                  features: [
+                    {
+                      icon: Search,
+                      title: "AI-Powered Semantic Search",
+                      description:
+                        "Go beyond keyword matching. Semantic search understands context, synonyms, and relationships. Ask questions in natural language and get relevant insights instantly — even if the exact words don't match.",
+                    },
+                    {
+                      icon: Users,
+                      title: "Cross-Team Insight Sharing",
+                      description:
+                        "Break down silos with unified access to research across all departments. Surface cross-functional insights for strategic planning and ensure teams work from the same knowledge base.",
+                    },
+                  ],
                 },
-                {
-                  icon: Users,
-                  title: "Cross-Team Insight Sharing",
-                  description:
-                    "Break down silos with unified access to research across all departments. Surface cross-functional insights for strategic planning and ensure teams work from the same knowledge base.",
-                },
-                {
-                  icon: BadgeCheck,
-                  title: "Approval Workflows",
-                  description:
-                    "Establish a single, canonical source of truth for every insight with built-in PR and legal approval workflows. Eliminate contradictory communications and ensure every message is aligned.",
-                },
-                {
-                  icon: Link2,
-                  title: "Research Traceability",
-                  description:
-                    "Automatically discover connections between related insights. Trace every finding back to original sources, methods, and raw data. Visualize institutional knowledge as an interconnected graph.",
-                },
-                {
-                  icon: Network,
-                  title: "Insight Relationships",
-                  description:
-                    "See which research builds on prior work, find contradictions, and identify knowledge gaps. Build compounding knowledge by surfacing existing work before new projects start.",
-                },
-                {
-                  icon: Shield,
-                  title: "Enterprise Security & Access Controls",
-                  description:
-                    "Role-based permissions, SSO integration, data encryption at rest and in transit, and compliance-ready infrastructure ensure sensitive research stays protected while remaining accessible.",
-                },
-              ].map((feature, index) => (
+              ].map((group, groupIndex) => (
                 <motion.div
-                  key={index}
+                  key={group.category}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: index * 0.1 }}
-                  className="bg-aetio-blue-50 border border-aetio-blue-200 rounded-lg p-8 hover:border-aetio-blue-300 transition-colors"
+                  transition={{ duration: 0.5, delay: groupIndex * 0.1 }}
+                  className="space-y-4"
                 >
-                  <div className="w-12 h-12 bg-aetio-blue-600/10 rounded-lg flex items-center justify-center mb-4">
-                    <feature.icon className="w-6 h-6 text-aetio-blue-600" />
+                  <div>
+                    <h3 className="text-2xl font-bold text-aetio-blue-950">
+                      {group.category}
+                    </h3>
+                    <p className="text-aetio-blue-700">{group.summary}</p>
                   </div>
-                  <h3 className="text-xl font-bold text-aetio-blue-950 mb-3">
-                    {feature.title}
-                  </h3>
-                  <p className="text-aetio-blue-800">{feature.description}</p>
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {group.features.map((feature, featureIndex) => (
+                      <motion.div
+                        key={feature.title}
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{
+                          duration: 0.4,
+                          delay: groupIndex * 0.1 + featureIndex * 0.06,
+                        }}
+                        className="bg-aetio-blue-50 border border-aetio-blue-200 rounded-lg p-6 hover:border-aetio-blue-300 transition-colors"
+                      >
+                        <div className="w-12 h-12 bg-aetio-blue-600/10 rounded-lg flex items-center justify-center mb-4">
+                          <feature.icon className="w-6 h-6 text-aetio-blue-600" />
+                        </div>
+                        <h4 className="text-xl font-bold text-aetio-blue-950 mb-3">
+                          {feature.title}
+                        </h4>
+                        <p className="text-aetio-blue-800">
+                          {feature.description}
+                        </p>
+                      </motion.div>
+                    ))}
+                  </div>
                 </motion.div>
               ))}
             </div>
@@ -287,7 +330,7 @@ export default function Product() {
               className="text-center mb-16"
             >
               <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
-                Scales as You Grow
+                Scale as You Grow
               </h2>
               <p className="text-xl text-aetio-blue-200 max-w-2xl mx-auto">
                 From a single team to the entire enterprise — Aetio grows with
