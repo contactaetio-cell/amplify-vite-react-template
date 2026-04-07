@@ -26,9 +26,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Insight, MetadataEntry } from './types';
-import { acceptInsights, deleteInsightTree, fetchProjectInsights } from '../../api/insights';
+import { acceptInsights, fetchProjectInsights } from '../../api/insights';
 
-type ReviewStatus = 'pending' | 'accepted' | 'declined';
+type ReviewStatus = 'pending' | 'approved' | 'declined';
 const LOW_CONFIDENCE_THRESHOLD = 0.7;
 
 function getConfidenceScore(insight: Insight): number | null {
@@ -85,7 +85,7 @@ function ProjectInsightReviewCard({
   formatDisplayDate: (value: string) => string;
 }) {
   const isDeclined = reviewStatus === 'declined';
-  const isAccepted = reviewStatus === 'accepted';
+  const isApproved = reviewStatus === 'approved';
   const team = getMetadataValue(projectInsight, 'team', 'Strategy');
   const sourceType = getMetadataValue(projectInsight, 'source_type', 'document');
   const sharingLevel = getMetadataValue(projectInsight, 'sharing_level', 'internal');
@@ -121,7 +121,7 @@ function ProjectInsightReviewCard({
           ? 'border-red-300 bg-red-50/40'
           : isLowConfidence
             ? 'border-red-200 bg-red-50/35'
-            : isAccepted
+            : isApproved
               ? 'border-green-200 bg-green-50/30'
               : ''
       }`}
@@ -156,12 +156,12 @@ function ProjectInsightReviewCard({
                 className={
                   isDeclined
                     ? 'text-[10px] bg-red-100 text-red-700 border-red-200'
-                    : isAccepted
+                    : isApproved
                       ? 'text-[10px] bg-green-100 text-green-700 border-green-200'
                       : 'text-[10px]'
                 }
               >
-                {isDeclined ? 'Declined' : isAccepted ? 'Accepted' : 'Pending'}
+                {isDeclined ? 'Declined' : isApproved ? 'Approved' : 'Pending'}
               </Badge>
               <button
                 onClick={(e) => {
@@ -443,36 +443,36 @@ export function ApprovalReviewPanel({
   insight,
   onBack,
   onApprove,
-  onDelete
+  onDecline
 }: {
   insight: Insight;
   onBack: () => void;
   onApprove: () => void;
-  onDelete: (insightId: string) => void;
+  onDecline: (insightId: string) => void;
 }) {
   const [statement, setStatement] = useState(insight.text);
   const [projectMetadata, setProjectMetadata] = useState<MetadataEntry[]>(insight.metadata ?? []);
   const [projectInsights, setProjectInsights] = useState<Insight[]>([]);
   const [isApproving, setIsApproving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeclining, setIsDeclining] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Insight | null>(null);
   const [activeDocFilter, setActiveDocFilter] = useState<string | null>(null);
   const [expandedInsightIds, setExpandedInsightIds] = useState<Set<string>>(new Set());
 
-  const reviewStatusForInsight = (item: Insight): 'pending' | 'accepted' | 'declined' => {
+  const reviewStatusForInsight = (item: Insight): 'pending' | 'approved' | 'declined' => {
     const statusValue = item.status?.toLowerCase();
-    if (statusValue === 'approved' || statusValue === 'accepted') return 'accepted';
+    if (statusValue === 'approved' || statusValue === 'accepted') return 'approved';
     if (statusValue === 'declined') return 'declined';
     return 'pending';
   };
 
   const setReviewStatusForInsight = (
     item: Insight,
-    nextStatus: 'pending' | 'accepted' | 'declined'
+    nextStatus: 'pending' | 'approved' | 'declined'
   ): Insight => ({
     ...item,
-    status: nextStatus
+    status: nextStatus === 'approved' ? 'Approved' : nextStatus === 'declined' ? 'Declined' : 'Pending'
   });
 
   const getMetadataValue = (item: Insight, tag: string, fallback = ''): string =>
@@ -650,7 +650,7 @@ export function ApprovalReviewPanel({
     setEditDraft(null);
   };
 
-  const updateReviewStatus = (insightId: string, nextStatus: 'pending' | 'accepted' | 'declined') => {
+  const updateReviewStatus = (insightId: string, nextStatus: 'pending' | 'approved' | 'declined') => {
     setProjectInsights((prev) =>
       prev.map((insightItem) => 
         insightItem.insight_id === insightId
@@ -675,7 +675,7 @@ export function ApprovalReviewPanel({
     setEditDraft(setCustomFieldValue(editDraft, index, field, val));
   };
 
-  const handleApprove = async () => {
+  const submitReviewDecision = async (decision: 'Approved' | 'Declined') => {
     if (!statement.trim()) {
       toast.error('Insight statement is required');
       return;
@@ -685,6 +685,7 @@ export function ApprovalReviewPanel({
       ...insight,
       text: statement,
       metadata: projectMetadata,
+      status: decision,
     };
 
     const combinedInsights = [currentInsight, ...projectInsights];
@@ -693,16 +694,37 @@ export function ApprovalReviewPanel({
     );
 
     try {
-      setIsApproving(true);
+      if (decision === 'Approved') {
+        setIsApproving(true);
+      } else {
+        setIsDeclining(true);
+      }
       await acceptInsights(insight.insight_id, uniqueInsights);
-      toast.success('Insights approved');
-      onApprove();
+      if (decision === 'Approved') {
+        toast.success('Insight approved');
+        onApprove();
+      } else {
+        toast.info('Insight declined');
+        onDecline(insight.insight_id);
+      }
     } catch (error) {
-      console.error('Failed to approve insights', error);
-      toast.error('Failed to approve insights');
+      console.error(`Failed to ${decision.toLowerCase()} insight`, error);
+      toast.error(`Failed to ${decision.toLowerCase()} insight`);
     } finally {
-      setIsApproving(false);
+      if (decision === 'Approved') {
+        setIsApproving(false);
+      } else {
+        setIsDeclining(false);
+      }
     }
+  };
+
+  const handleApprove = async () => {
+    await submitReviewDecision('Approved');
+  };
+
+  const handleDecline = async () => {
+    await submitReviewDecision('Declined');
   };
 
   const updateProjectMetadata = (index: number, field: 'tag' | 'value', value: string) => {
@@ -737,21 +759,6 @@ export function ApprovalReviewPanel({
       next.push({ tag: 'team', value, confidence: 1 });
       return next;
     });
-  };
-
-  const handleDeleteProject = async () => {
-    try {
-      setIsDeleting(true);
-      await deleteInsightTree(insight.insight_id);
-      toast.success('Project deleted');
-      onDelete(insight.insight_id);
-      onBack();
-    } catch (error) {
-      console.error('Failed to delete project', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to delete project');
-    } finally {
-      setIsDeleting(false);
-    }
   };
 
   return (
@@ -912,8 +919,8 @@ export function ApprovalReviewPanel({
                       toast.info('Insight declined');
                     }}
                     onApprove={(insightId) => {
-                      updateReviewStatus(insightId, 'accepted');
-                      toast.success('Insight accepted');
+                      updateReviewStatus(insightId, 'approved');
+                      toast.success('Insight approved');
                     }}
                     onStartEditing={startEditing}
                     onEditDraftChange={(nextDraft) => setEditDraft(nextDraft)}
@@ -941,16 +948,12 @@ export function ApprovalReviewPanel({
       </Card>
 
       <div className="flex justify-between gap-3">
-        <Button
-          variant="destructive"
-          onClick={handleDeleteProject}
-          disabled={isDeleting || isApproving}
-        >
-          {isDeleting ? 'Deleting...' : 'Delete Project'}
+        <Button variant="destructive" onClick={handleDecline} disabled={isDeclining || isApproving}>
+          {isDeclining ? 'Declining...' : 'Decline'}
         </Button>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={onBack} disabled={isDeleting}>Back</Button>
-          <Button onClick={handleApprove} disabled={isApproving}>
+          <Button variant="outline" onClick={onBack} disabled={isDeclining || isApproving}>Back</Button>
+          <Button onClick={handleApprove} disabled={isApproving || isDeclining}>
             {isApproving ? 'Approving...' : 'Approve'}
           </Button>
         </div>

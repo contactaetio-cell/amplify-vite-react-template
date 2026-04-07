@@ -45,10 +45,14 @@ export function ApprovalReviewQueueTab({
           insight={selectedInsight}
           onBack={onBackToQueue}
           onApprove={() => {
-            toast.success('Insights approved successfully!');
+            toast.success('Insight approved successfully!');
+            onDeleteInsight(selectedInsight.insight_id);
             onBackToQueue();
           }}
-          onDelete={onDeleteInsight}
+          onDecline={(insightId) => {
+            onDeleteInsight(insightId);
+            onBackToQueue();
+          }}
         />
       ) : (
         <Card>

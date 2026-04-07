@@ -752,7 +752,7 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
             className="mb-4 -ml-2"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Search
+            Back
           </Button>
           
           <div className="flex items-start justify-between gap-4">
