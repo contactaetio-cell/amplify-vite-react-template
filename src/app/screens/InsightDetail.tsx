@@ -34,6 +34,7 @@ import {
 import { type Insight as UiInsight, type MetadataField } from '../data/mockData';
 import { ChildInsightsExplorer } from '../components/ChildInsightsExplorer';
 import {
+  fetchInsightById,
   fetchInsightTree,
   type SearchSource,
   updateInsightById,
@@ -283,11 +284,6 @@ function mapBackendInsightToUiInsight(
   };
 }
 
-type RelatedInsightItem = {
-  relation: 'child' | 'parent' | 'sibling';
-  insight: UiInsight;
-};
-
 function toDisplayLabel(value: string): string {
   return value
     .split(/[_-]+/)
@@ -344,7 +340,7 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
   const [insight, setInsight] = useState<UiInsight | null>(null);
   const [insightData, setInsightData] = useState<InsightFamilyData | null>(null);
   const [childInsights, setChildInsights] = useState<UiInsight[]>([]);
-  const [relatedInsights, setRelatedInsights] = useState<RelatedInsightItem[]>([]);
+  const [relatedInsights, setRelatedInsights] = useState<UiInsight[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isEditingPage, setIsEditingPage] = useState<boolean>(false);
   const [editStatement, setEditStatement] = useState<string>('');
@@ -411,7 +407,10 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
       setTableDimensionFilters({});
 
       try {
-        const tree = await fetchInsightTree(insightId, { source });
+        const [tree, detail] = await Promise.all([
+          fetchInsightTree(insightId, { source }),
+          fetchInsightById(insightId, { source }),
+        ]);
         if (cancelled) return;
 
         if (!tree || tree.insight.length === 0) {
@@ -431,28 +430,10 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
           }),
         );
 
-        const relatedById = new Map<string, RelatedInsightItem>();
-        const relationBuckets: Array<{ relation: RelatedInsightItem['relation']; items: BackendInsight[] }> = [
-          { relation: 'parent', items: tree.parents },
-          { relation: 'sibling', items: tree.siblings },
-          { relation: 'child', items: tree.children },
-        ];
-
-        for (const bucket of relationBuckets) {
-          for (const item of bucket.items) {
-            if (item.insight_id === rootInsight.insight_id) continue;
-            if (relatedById.has(item.insight_id)) continue;
-            relatedById.set(item.insight_id, {
-              relation: bucket.relation,
-              insight:
-                bucket.relation === 'child'
-                  ? mappedChildren.find((child) => child.id === item.insight_id) ?? mapBackendInsightToUiInsight(item)
-                  : mapBackendInsightToUiInsight(item),
-            });
-          }
-        }
-
-        setRelatedInsights(Array.from(relatedById.values()));
+        const siblingItems = (detail?.siblings ?? [])
+          .filter((item) => item.insight_id !== rootInsight.insight_id)
+          .map((item) => mapBackendInsightToUiInsight(item));
+        setRelatedInsights(siblingItems);
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : 'Failed to load insight';
@@ -1230,20 +1211,23 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
               <TabsContent value="related" className="mt-6">
                 <div className="space-y-4">
                   {relatedInsights.length > 0 ? (
-                    relatedInsights.map(({ relation, insight: related }) => (
+                    relatedInsights.map((related) => (
                       <Card key={related.id} className="p-6 cursor-pointer hover:shadow-md transition-shadow"
                         onClick={() => onViewRelated(related.id)}
                       >
                         <h3 className="font-medium text-gray-900 mb-3 whitespace-normal break-words">{related.statement}</h3>
                         <p className="text-sm text-gray-600 mb-3 line-clamp-2 break-words">{related.fullContent ?? related.statement}</p>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="secondary" className="capitalize">{relation}</Badge>
+                          <Badge variant="secondary" className="capitalize">sibling</Badge>
                           <Badge variant="outline">{related.team}</Badge>
-                          {related.tags.slice(0, 2).map((tag) => (
-                            <Badge key={tag} variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                              {tag}
+                          {(related.metadata ?? [])
+                            .filter((field) => field.label.trim().length > 0 && String(field.value ?? '').trim().length > 0)
+                            .slice(0, 2)
+                            .map((field) => (
+                            <Badge key={`${related.id}-${field.id}`} variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              {field.label}: {field.value}
                             </Badge>
-                          ))}
+                            ))}
                         </div>
                       </Card>
                     ))

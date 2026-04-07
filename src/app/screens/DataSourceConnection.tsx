@@ -6,7 +6,7 @@ import { UploadHistoryTab } from './data-source-connection/UploadHistoryTab';
 import { UploadResearchTab } from './data-source-connection/UploadResearchTab';
 import type { Insight } from './data-source-connection/types';
 import { getCurrentUser } from 'aws-amplify/auth';
-import { fetchTopLevelInsightsByUser } from '../api/insights';
+import { fetchPendingProjectsByUser } from '../api/insights';
 import { useLocation, useNavigate, useParams } from 'react-router';
 
 interface DataSourceConnectionProps {
@@ -45,7 +45,29 @@ export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSour
     async function loadQueue() {
       try {
         const user = await getCurrentUser();
-        const rootInsights = await fetchTopLevelInsightsByUser(user.userId, 'Pending');
+        const projects = await fetchPendingProjectsByUser(user.userId);
+        const rootInsights: Insight[] = projects.map((project) => ({
+          insight_id: project.project_id,
+          project_id: project.project_id,
+          user_id: project.user_id,
+          user_info: project.user_info,
+          status: project.status,
+          text: project.research_context?.trim() || 'Pending project review',
+          evidence_snippet: project.research_context?.trim() || 'Pending project review',
+          s3_node: `project:${project.project_id}`,
+          document_id: project.project_id,
+          createdAt: project.created_at,
+          updatedAt: project.updated_at,
+          additional_refs: {
+            upload_mode: project.upload_mode,
+            context_urls: project.context_urls ?? [],
+            output_urls: project.output_urls ?? [],
+            raw_data_urls: project.raw_data_urls ?? [],
+            insight_ids: project.insight_ids ?? [],
+            createdAt: project.created_at,
+            updatedAt: project.updated_at,
+          },
+        }));
 
         if (isMounted) {
           setInsights(rootInsights);

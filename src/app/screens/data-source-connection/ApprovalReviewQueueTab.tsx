@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react';
 import { Badge } from '../../components/ui/badge';
 import { Card } from '../../components/ui/card';
 import { ChevronRight, Clock, FileText, Sparkles, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApprovalReviewPanel } from './ApprovalReviewPanel';
 import type { Insight } from './types';
+import { fetchProjectApprovalBundle } from '../../api/insights';
 
 function getInsightDateLabel(insight: Insight): string | null {
   const rawCreatedAt =
@@ -34,13 +36,78 @@ export function ApprovalReviewQueueTab({
   onBackToQueue: () => void;
   onDeleteInsight: (insightId: string) => void;
 }) {
-  const selectedInsight = selectedInsightId
+  const selectedInsightFromQueue = selectedInsightId
     ? insights.find((item) => item.insight_id === selectedInsightId) ?? null
     : null;
+  const [selectedInsight, setSelectedInsight] = useState<Insight | null>(null);
+  const [isLoadingSelected, setIsLoadingSelected] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function hydrateSelectedProject() {
+      if (!selectedInsightId) {
+        if (mounted) setSelectedInsight(null);
+        return;
+      }
+
+      if (mounted) setIsLoadingSelected(true);
+      try {
+        const bundle = await fetchProjectApprovalBundle(selectedInsightId);
+        const project = bundle.project;
+        const hydratedInsight: Insight = {
+          insight_id: project.project_id,
+          project_id: project.project_id,
+          user_id: project.user_id,
+          user_info: project.user_info,
+          status: project.status,
+          text: project.research_context?.trim() || 'Pending project review',
+          evidence_snippet: project.research_context?.trim() || 'Pending project review',
+          s3_node: `project:${project.project_id}`,
+          document_id: project.project_id,
+          createdAt: project.created_at,
+          updatedAt: project.updated_at,
+          additional_refs: {
+            upload_mode: project.upload_mode,
+            context_urls: project.context_urls ?? [],
+            output_urls: project.output_urls ?? [],
+            raw_data_urls: project.raw_data_urls ?? [],
+            insight_ids: project.insight_ids ?? [],
+            createdAt: project.created_at,
+            updatedAt: project.updated_at,
+            preloaded_project_insights: bundle.insights ?? [],
+            insightfamilydata: bundle.insightfamilydata,
+          },
+        };
+
+        if (mounted) setSelectedInsight(hydratedInsight);
+      } catch (error) {
+        console.error('Failed to load selected project bundle', error);
+        if (mounted) setSelectedInsight(selectedInsightFromQueue);
+      } finally {
+        if (mounted) setIsLoadingSelected(false);
+      }
+    }
+
+    void hydrateSelectedProject();
+
+    return () => {
+      mounted = false;
+    };
+  }, [selectedInsightFromQueue, selectedInsightId]);
 
   return (
     <div className="max-w-7xl mx-auto">
-      {selectedInsight ? (
+      {selectedInsightId ? (
+        isLoadingSelected && !selectedInsight ? (
+          <Card>
+            <div className="px-6 py-8 text-sm text-gray-500">Loading project review...</div>
+          </Card>
+        ) : !selectedInsight ? (
+          <Card>
+            <div className="px-6 py-8 text-sm text-gray-500">Project not found.</div>
+          </Card>
+        ) : (
         <ApprovalReviewPanel
           insight={selectedInsight}
           onBack={onBackToQueue}
@@ -54,6 +121,7 @@ export function ApprovalReviewQueueTab({
             onBackToQueue();
           }}
         />
+        )
       ) : (
         <Card>
           <div className="px-6 py-4 border-b border-gray-200">

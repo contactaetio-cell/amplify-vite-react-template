@@ -25,7 +25,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Insight, MetadataEntry } from './types';
+import type { Insight, InsightFamilyData, MetadataEntry } from './types';
 import { acceptInsights, fetchProjectInsights } from '../../api/insights';
 
 type ReviewStatus = 'pending' | 'approved' | 'declined';
@@ -59,6 +59,7 @@ function ProjectInsightReviewCard({
   getCustomFields,
   getFootnote,
   setAdditionalRefValue,
+  getInsightFamilyDataForInsight,
   formatDisplayDate
 }: {
   projectInsight: Insight;
@@ -82,6 +83,7 @@ function ProjectInsightReviewCard({
   getCustomFields: (item: Insight) => { label: string; value: string }[];
   getFootnote: (item: Insight) => string;
   setAdditionalRefValue: (item: Insight, key: string, value: unknown) => Insight;
+  getInsightFamilyDataForInsight: (item: Insight) => InsightFamilyData | null;
   formatDisplayDate: (value: string) => string;
 }) {
   const isDeclined = reviewStatus === 'declined';
@@ -95,6 +97,7 @@ function ProjectInsightReviewCard({
   const customFields = getCustomFields(projectInsight);
   const draftCustomFields = getCustomFields(draft);
   const confidenceScore = getConfidenceScore(projectInsight);
+  const insightFamilyData = getInsightFamilyDataForInsight(projectInsight);
   const confidencePercent = confidenceScore !== null ? Math.round(confidenceScore * 100) : null;
   const isLowConfidence =
     confidenceScore !== null && confidenceScore < LOW_CONFIDENCE_THRESHOLD;
@@ -267,6 +270,45 @@ function ProjectInsightReviewCard({
                 </p>
                 {confidenceReasoning && (
                   <p className="text-xs text-gray-600 mt-1">{confidenceReasoning}</p>
+                )}
+              </div>
+            )}
+
+            {insightFamilyData && (
+              <div className="rounded-md border border-blue-100 bg-blue-50/40 p-3">
+                <p className="text-xs text-gray-500 mb-2">Insight Family Data</p>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  <Badge variant="secondary" className="text-[10px]">
+                    Rows: {insightFamilyData.row_count ?? insightFamilyData.rows?.length ?? 0}
+                  </Badge>
+                  {(insightFamilyData.dimensions ?? []).length > 0 && (
+                    <Badge variant="secondary" className="text-[10px]">
+                      Dimensions: {insightFamilyData.dimensions.join(', ')}
+                    </Badge>
+                  )}
+                  {(insightFamilyData.metric_columns ?? []).length > 0 && (
+                    <Badge variant="secondary" className="text-[10px]">
+                      Metrics: {insightFamilyData.metric_columns.join(', ')}
+                    </Badge>
+                  )}
+                </div>
+                {(insightFamilyData.rows ?? []).length > 0 && (
+                  <div className="space-y-1.5">
+                    {(insightFamilyData.rows ?? []).slice(0, 5).map((row) => (
+                      <div key={row.row_id} className="text-xs text-gray-700 rounded bg-white border border-blue-100 px-2 py-1.5">
+                        <span className="font-medium">
+                          {row.filter_values?.map((entry) => `${entry.tag}: ${entry.value}`).join(' | ') || 'All segments'}
+                        </span>
+                        <span className="text-gray-500">{' -> '}</span>
+                        <span>{row.metric_name ? `${row.metric_name}: ` : ''}{row.value_text}</span>
+                      </div>
+                    ))}
+                    {(insightFamilyData.rows ?? []).length > 5 && (
+                      <p className="text-[11px] text-gray-500">
+                        Showing 5 of {(insightFamilyData.rows ?? []).length} rows
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -494,6 +536,31 @@ export function ApprovalReviewPanel({
       ? (item.additional_refs as Record<string, unknown>)
       : {};
 
+  const getInsightFamilyDataForInsight = (item: Insight): InsightFamilyData | null => {
+    const refs = getAdditionalRefs(item);
+    const attached = refs.insight_family_data;
+    if (attached && typeof attached === 'object' && !Array.isArray(attached)) {
+      return attached as InsightFamilyData;
+    }
+
+    const tableId = item.insight_family_data_id?.trim();
+    if (!tableId) return null;
+
+    const rootRefs = getAdditionalRefs(insight);
+    const rootTables = rootRefs.insightfamilydata;
+    if (!Array.isArray(rootTables)) return null;
+    const matched = rootTables.find(
+      (table): table is InsightFamilyData =>
+        Boolean(table) &&
+        typeof table === 'object' &&
+        !Array.isArray(table) &&
+        typeof (table as InsightFamilyData).table_id === 'string' &&
+        (table as InsightFamilyData).table_id === tableId
+    );
+
+    return matched ?? null;
+  };
+
   const setAdditionalRefValue = (item: Insight, key: string, value: unknown): Insight => ({
     ...item,
     additional_refs: {
@@ -592,6 +659,23 @@ export function ApprovalReviewPanel({
     async function loadProjectInsights() {
       if (!insight.user_id || !insight.insight_id) {
         if (mounted) setProjectInsights([]);
+        return;
+      }
+
+      const refs = getAdditionalRefs(insight);
+      const preloadedInsightsRaw = refs.preloaded_project_insights;
+      if (Array.isArray(preloadedInsightsRaw)) {
+        if (mounted) {
+          setProjectInsights(
+            preloadedInsightsRaw.filter(
+              (candidate): candidate is Insight =>
+                Boolean(candidate) &&
+                typeof candidate === 'object' &&
+                !Array.isArray(candidate) &&
+                typeof (candidate as Insight).insight_id === 'string'
+            )
+          );
+        }
         return;
       }
 
@@ -861,14 +945,6 @@ export function ApprovalReviewPanel({
             </div>
           </div>
         </div>
-        {insight.additional_refs && (
-          <div>
-            <p className="text-sm font-medium text-gray-900 mb-2">Additional References</p>
-            <pre className="rounded-md bg-gray-50 border border-gray-200 p-3 text-xs overflow-auto">
-              {JSON.stringify(insight.additional_refs, null, 2)}
-            </pre>
-          </div>
-        )}
         <div>
           <p className="text-sm font-medium text-gray-900 mb-2">
             Project Insights ({projectInsights.length})
@@ -934,6 +1010,7 @@ export function ApprovalReviewPanel({
                     getCustomFields={getCustomFields}
                     getFootnote={getFootnote}
                     setAdditionalRefValue={setAdditionalRefValue}
+                    getInsightFamilyDataForInsight={getInsightFamilyDataForInsight}
                     formatDisplayDate={formatDisplayDate}
                   />
                 );

@@ -20,7 +20,9 @@ export const availableSearchSources: SearchSource[] = (() => {
   return ALL_SEARCH_SOURCES.filter((source) => parsed.includes(source));
 })();
 
-export const defaultSearchSource: SearchSource = availableSearchSources[0] ?? 'local';
+export const defaultSearchSource: SearchSource = availableSearchSources.includes('local')
+  ? 'local'
+  : (availableSearchSources[0] ?? 'local');
 
 export const hasMultipleSearchSources = availableSearchSources.length > 1;
 

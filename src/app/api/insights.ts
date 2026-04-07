@@ -11,8 +11,33 @@ type InsightsResponse = {
   items: unknown[];
 };
 
+export type ProjectRecord = {
+  user_id: string;
+  status: string;
+  project_id: string;
+  insight_ids?: string[];
+  user_info?: {
+    full_name?: string;
+    email_address?: string;
+  };
+  upload_mode?: "document" | "manual";
+  research_context?: string;
+  context_urls?: string[];
+  output_urls?: string[];
+  raw_data_urls?: string[];
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type ProjectApprovalBundle = {
+  project: ProjectRecord;
+  insights: Insight[];
+  insightfamilydata: InsightFamilyData[];
+};
+
 type InsightDetailResponse = {
   insight: Insight;
+  siblings: Insight[];
   data: InsightFamilyData | null;
 };
 
@@ -320,6 +345,78 @@ export async function fetchTopLevelInsightsByUser(_userId: string, status: strin
   return insights;
 }
 
+export async function fetchPendingProjectsByUser(_userId: string): Promise<ProjectRecord[]> {
+  logInsightsDebug('fetchPendingProjectsByUser', 'Started');
+  const url = new URL('/projects', BACKEND_URL);
+  url.searchParams.set('status', 'Pending');
+  const headers = await buildAuthHeaders({});
+
+  const response = await fetch(url.toString(), { method: 'GET', headers });
+  const text = await response.text();
+  if (!response.ok) {
+    logInsightsError('fetchPendingProjectsByUser', 'Backend returned error response', {
+      status: response.status,
+      responsePreview: text.slice(0, 300),
+    });
+    throw new Error(`Failed to fetch projects: ${response.status} ${text}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error('Invalid projects response');
+  }
+
+  const items =
+    parsed &&
+    typeof parsed === 'object' &&
+    !Array.isArray(parsed) &&
+    Array.isArray((parsed as { items?: unknown[] }).items)
+      ? ((parsed as { items: unknown[] }).items as ProjectRecord[])
+      : [];
+
+  logInsightsDebug('fetchPendingProjectsByUser', 'Completed successfully', { count: items.length });
+  return items;
+}
+
+export async function fetchProjectApprovalBundle(projectId: string): Promise<ProjectApprovalBundle> {
+  logInsightsDebug('fetchProjectApprovalBundle', 'Started', { projectId });
+  const url = new URL(`/projects/${encodeURIComponent(projectId)}`, BACKEND_URL);
+  const headers = await buildAuthHeaders({});
+  const response = await fetch(url.toString(), { method: 'GET', headers });
+  const text = await response.text();
+  if (!response.ok) {
+    logInsightsError('fetchProjectApprovalBundle', 'Backend returned error response', {
+      status: response.status,
+      responsePreview: text.slice(0, 300),
+    });
+    throw new Error(`Failed to fetch project bundle: ${response.status} ${text}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error('Invalid project bundle response');
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Invalid project bundle response');
+  }
+
+  const bundle = parsed as ProjectApprovalBundle;
+  if (!bundle.project || typeof bundle.project !== 'object') {
+    throw new Error('Invalid project bundle response');
+  }
+
+  return {
+    project: bundle.project,
+    insights: Array.isArray(bundle.insights) ? bundle.insights : [],
+    insightfamilydata: Array.isArray(bundle.insightfamilydata) ? bundle.insightfamilydata : [],
+  };
+}
+
 export async function fetchProjectInsights(_userId: string, projectId: string): Promise<Insight[]> {
   logInsightsDebug('fetchProjectInsights', 'Started', { projectId });
   const insights = await fetchInsightsByFilters({
@@ -385,6 +482,7 @@ export async function fetchInsightById(
   logInsightsDebug('fetchInsightById', 'Completed successfully', { insightId });
   return {
     insight: parsed.insight as Insight,
+    siblings: Array.isArray(parsed.siblings) ? castInsights(parsed.siblings) : [],
     data: (parsed.data ?? null) as InsightFamilyData | null,
   };
 }
