@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Search } from 'lucide-react';
 import { getCurrentUser } from 'aws-amplify/auth';
 import { useNavigate } from 'react-router';
-import { fetchInsights } from '../api/insights';
+import { fetchAllInsights, fetchInsights } from '../api/insights';
 import type { Insight } from './data-source-connection/types';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
@@ -81,10 +81,13 @@ export function InsightsList({ mode, onViewInsight }: InsightsListProps) {
       setError(null);
 
       try {
-        const data = await fetchInsights({
-          user_id: mode === 'mine' ? userId ?? undefined : undefined,
-          status: status === 'all' ? undefined : status,
-        });
+        const data =
+          mode === 'all'
+            ? await fetchAllInsights()
+            : await fetchInsights({
+                user_id: userId ?? undefined,
+                status: status === 'all' ? undefined : status,
+              });
 
         if (mounted) {
           setInsights(data);
@@ -110,9 +113,14 @@ export function InsightsList({ mode, onViewInsight }: InsightsListProps) {
 
   const filteredInsights = useMemo(() => {
     const trimmed = query.trim().toLowerCase();
-    if (!trimmed) return insights;
+    const statusFiltered =
+      status === 'all'
+        ? insights
+        : insights.filter((insight) => (insight.status ?? '').toLowerCase() === status.toLowerCase());
 
-    return insights.filter((insight) => {
+    if (!trimmed) return statusFiltered;
+
+    return statusFiltered.filter((insight) => {
       const metadataValues = (insight.metadata ?? []).map((item) => item.value.toLowerCase());
       return (
         insight.text.toLowerCase().includes(trimmed) ||
@@ -121,7 +129,7 @@ export function InsightsList({ mode, onViewInsight }: InsightsListProps) {
         metadataValues.some((value) => value.includes(trimmed))
       );
     });
-  }, [insights, query]);
+  }, [insights, query, status]);
 
   const title = mode === 'mine' ? 'My Insights' : 'Browse All Insights';
   const subtitle =

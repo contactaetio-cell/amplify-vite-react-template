@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../components/ui/badge';
 import { Clock, History, Upload } from 'lucide-react';
 import { ApprovalReviewQueueTab } from './data-source-connection/ApprovalReviewQueueTab';
-import { UploadHistoryTab } from './data-source-connection/UploadHistoryTab';
 import { UploadResearchTab } from './data-source-connection/UploadResearchTab';
 import type { Insight } from './data-source-connection/types';
 import { getCurrentUser } from 'aws-amplify/auth';
-import { fetchPendingProjectsByUser } from '../api/insights';
+import {
+  fetchNonPendingProjectsByUser,
+  fetchPendingProjectsByUser,
+  type ProjectRecord,
+} from '../api/insights';
 import { useLocation, useNavigate, useParams } from 'react-router';
 
 interface DataSourceConnectionProps {
@@ -22,8 +25,33 @@ export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSour
   const navigate = useNavigate();
   const location = useLocation();
   const { tab, insightId } = useParams();
-  const [insights, setInsights] = useState<Insight[]>([]);
+  const [pendingInsights, setPendingInsights] = useState<Insight[]>([]);
+  const [historyInsights, setHistoryInsights] = useState<Insight[]>([]);
+  const [selectedHistoryInsightId, setSelectedHistoryInsightId] = useState<string | undefined>(undefined);
   const [queueLoading, setQueueLoading] = useState(true);
+
+  const toProjectRootInsight = (project: ProjectRecord): Insight => ({
+    insight_id: project.project_id,
+    project_id: project.project_id,
+    user_id: project.user_id,
+    user_info: project.user_info,
+    status: project.status,
+    text: project.research_context?.trim() || 'Project review',
+    evidence_snippet: project.research_context?.trim() || 'Project review',
+    s3_node: `project:${project.project_id}`,
+    document_id: project.project_id,
+    createdAt: project.created_at,
+    updatedAt: project.updated_at,
+    additional_refs: {
+      upload_mode: project.upload_mode,
+      context_urls: project.context_urls ?? [],
+      output_urls: project.output_urls ?? [],
+      raw_data_urls: project.raw_data_urls ?? [],
+      insight_ids: project.insight_ids ?? [],
+      createdAt: project.created_at,
+      updatedAt: project.updated_at,
+    },
+  });
 
   const activeTab: Tab =
     location.pathname.includes('/dashboard/ingestion/approval-review-queue')
@@ -42,40 +70,23 @@ export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSour
   useEffect(() => {
     let isMounted = true;
 
-    async function loadQueue() {
+    async function loadQueueData() {
       try {
         const user = await getCurrentUser();
-        const projects = await fetchPendingProjectsByUser(user.userId);
-        const rootInsights: Insight[] = projects.map((project) => ({
-          insight_id: project.project_id,
-          project_id: project.project_id,
-          user_id: project.user_id,
-          user_info: project.user_info,
-          status: project.status,
-          text: project.research_context?.trim() || 'Pending project review',
-          evidence_snippet: project.research_context?.trim() || 'Pending project review',
-          s3_node: `project:${project.project_id}`,
-          document_id: project.project_id,
-          createdAt: project.created_at,
-          updatedAt: project.updated_at,
-          additional_refs: {
-            upload_mode: project.upload_mode,
-            context_urls: project.context_urls ?? [],
-            output_urls: project.output_urls ?? [],
-            raw_data_urls: project.raw_data_urls ?? [],
-            insight_ids: project.insight_ids ?? [],
-            createdAt: project.created_at,
-            updatedAt: project.updated_at,
-          },
-        }));
+        const [pendingProjects, nonPendingProjects] = await Promise.all([
+          fetchPendingProjectsByUser(user.userId),
+          fetchNonPendingProjectsByUser(user.userId),
+        ]);
 
         if (isMounted) {
-          setInsights(rootInsights);
+          setPendingInsights(pendingProjects.map(toProjectRootInsight));
+          setHistoryInsights(nonPendingProjects.map(toProjectRootInsight));
         }
       } catch (error) {
         console.error('Failed to load queue insights', error);
         if (isMounted) {
-          setInsights([]);
+          setPendingInsights([]);
+          setHistoryInsights([]);
         }
       } finally {
         if (isMounted) {
@@ -84,7 +95,7 @@ export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSour
       }
     }
 
-    void loadQueue();
+    void loadQueueData();
 
     return () => {
       isMounted = false;
@@ -127,7 +138,7 @@ export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSour
               <Clock className="w-4 h-4" />
               Approval Review Queue
               <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-300">
-                {queueLoading ? '...' : insights.length}
+                {queueLoading ? '...' : pendingInsights.length}
               </Badge>
             </div>
           </button>
@@ -150,16 +161,26 @@ export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSour
           {activeTab === 'upload' && <UploadResearchTab />}
           {activeTab === 'approval' && (
             <ApprovalReviewQueueTab
-              insights={insights}
+              insights={pendingInsights}
               selectedInsightId={insightId}
               onSelectInsight={(selectedId) => navigate(`${approvalPath}/${selectedId}`)}
               onBackToQueue={() => navigate(approvalPath)}
               onDeleteInsight={(deletedInsightId) =>
-                setInsights((prev) => prev.filter((item) => item.insight_id !== deletedInsightId))
+                setPendingInsights((prev) => prev.filter((item) => item.insight_id !== deletedInsightId))
               }
             />
           )}
-          {activeTab === 'history' && <UploadHistoryTab />}
+          {activeTab === 'history' && (
+            <ApprovalReviewQueueTab
+              insights={historyInsights}
+              selectedInsightId={selectedHistoryInsightId}
+              onSelectInsight={(selectedId) => setSelectedHistoryInsightId(selectedId)}
+              onBackToQueue={() => setSelectedHistoryInsightId(undefined)}
+              onDeleteInsight={(deletedInsightId) =>
+                setHistoryInsights((prev) => prev.filter((item) => item.insight_id !== deletedInsightId))
+              }
+            />
+          )}
         </div>
       </div>
     </div>

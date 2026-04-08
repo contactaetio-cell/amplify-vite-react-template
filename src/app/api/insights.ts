@@ -335,6 +335,40 @@ export async function fetchInsights(filters?: InsightsFilters): Promise<Insight[
   return insights;
 }
 
+export async function fetchAllInsights(): Promise<Insight[]> {
+  logInsightsDebug('fetchAllInsights', 'Started');
+  const url = new URL("/insights/all", BACKEND_URL);
+  const headers = await buildAuthHeaders({});
+  const response = await fetch(url.toString(), { method: "GET", headers });
+  const text = await response.text();
+
+  if (!response.ok) {
+    logInsightsError('fetchAllInsights', 'Backend returned error response', {
+      status: response.status,
+      responsePreview: text.slice(0, 300),
+    });
+    throw new Error(`Failed to fetch all insights: ${response.status} ${text}`);
+  }
+
+  let data: InsightsResponse | null = null;
+  try {
+    data = JSON.parse(text) as InsightsResponse;
+  } catch {
+    logInsightsError('fetchAllInsights', 'Failed to parse JSON response body', {
+      responsePreview: text.slice(0, 300),
+    });
+    throw new Error("Invalid insights response");
+  }
+
+  if (!data || !Array.isArray(data.items)) {
+    logInsightsError('fetchAllInsights', 'Invalid response shape', { data });
+    throw new Error("Invalid insights response");
+  }
+
+  logInsightsDebug('fetchAllInsights', 'Completed successfully', { count: data.items.length });
+  return castInsights(data.items);
+}
+
 export async function fetchTopLevelInsightsByUser(_userId: string, status: string): Promise<Insight[]> {
   logInsightsDebug('fetchTopLevelInsightsByUser', 'Started', { status });
   const insights = await fetchInsightsByFilters({
@@ -347,15 +381,46 @@ export async function fetchTopLevelInsightsByUser(_userId: string, status: strin
 
 export async function fetchPendingProjectsByUser(_userId: string): Promise<ProjectRecord[]> {
   logInsightsDebug('fetchPendingProjectsByUser', 'Started');
+  const items = await fetchProjectsByStatus('Pending');
+  logInsightsDebug('fetchPendingProjectsByUser', 'Completed successfully', { count: items.length });
+  return items;
+}
+
+export async function fetchNonPendingProjectsByUser(_userId: string): Promise<ProjectRecord[]> {
+  logInsightsDebug('fetchNonPendingProjectsByUser', 'Started');
+  const statuses = ['Accepted', 'Declined', 'Completed'];
+  const projectBuckets = await Promise.all(statuses.map((status) => fetchProjectsByStatus(status)));
+  const dedupedByProjectId = new Map<string, ProjectRecord>();
+
+  for (const bucket of projectBuckets) {
+    for (const project of bucket) {
+      if (!dedupedByProjectId.has(project.project_id)) {
+        dedupedByProjectId.set(project.project_id, project);
+      }
+    }
+  }
+
+  const projects = Array.from(dedupedByProjectId.values()).sort((left, right) => {
+    const leftUpdated = new Date(left.updated_at ?? left.created_at ?? 0).getTime();
+    const rightUpdated = new Date(right.updated_at ?? right.created_at ?? 0).getTime();
+    return rightUpdated - leftUpdated;
+  });
+
+  logInsightsDebug('fetchNonPendingProjectsByUser', 'Completed successfully', { count: projects.length });
+  return projects;
+}
+
+async function fetchProjectsByStatus(status: string): Promise<ProjectRecord[]> {
   const url = new URL('/projects', BACKEND_URL);
-  url.searchParams.set('status', 'Pending');
+  url.searchParams.set('status', status);
   const headers = await buildAuthHeaders({});
 
   const response = await fetch(url.toString(), { method: 'GET', headers });
   const text = await response.text();
   if (!response.ok) {
-    logInsightsError('fetchPendingProjectsByUser', 'Backend returned error response', {
+    logInsightsError('fetchProjectsByStatus', 'Backend returned error response', {
       status: response.status,
+      requestedStatus: status,
       responsePreview: text.slice(0, 300),
     });
     throw new Error(`Failed to fetch projects: ${response.status} ${text}`);
@@ -375,8 +440,6 @@ export async function fetchPendingProjectsByUser(_userId: string): Promise<Proje
     Array.isArray((parsed as { items?: unknown[] }).items)
       ? ((parsed as { items: unknown[] }).items as ProjectRecord[])
       : [];
-
-  logInsightsDebug('fetchPendingProjectsByUser', 'Completed successfully', { count: items.length });
   return items;
 }
 
