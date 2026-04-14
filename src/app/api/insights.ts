@@ -16,6 +16,9 @@ export type ProjectRecord = {
   status: string;
   project_id: string;
   insight_ids?: string[];
+  countAccepted?: number;
+  countDeclined?: number;
+  numberChildInsights?: number;
   user_info?: {
     full_name?: string;
     email_address?: string;
@@ -225,7 +228,7 @@ export type UpdateInsightPayload = {
   summary?: string;
   status?: string;
   metadata?: MetadataEntry[];
-  additional_refs?: unknown;
+  footnote?: string;
   user_info?: {
     full_name?: string;
     email_address?: string;
@@ -482,11 +485,20 @@ export async function fetchProjectApprovalBundle(projectId: string): Promise<Pro
 
 export async function fetchProjectInsights(_userId: string, projectId: string): Promise<Insight[]> {
   logInsightsDebug('fetchProjectInsights', 'Started', { projectId });
-  const insights = await fetchInsightsByFilters({
-    project_id: projectId,
-  });
-  logInsightsDebug('fetchProjectInsights', 'Completed successfully', { count: insights.length });
-  return insights;
+  try {
+    const bundle = await fetchProjectApprovalBundle(projectId);
+    const insights = Array.isArray(bundle.insights) ? bundle.insights : [];
+    logInsightsDebug('fetchProjectInsights', 'Completed successfully via project bundle', {
+      count: insights.length,
+    });
+    return insights;
+  } catch (error) {
+    logInsightsError('fetchProjectInsights', 'Project bundle fetch failed', {
+      projectId,
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+    throw error;
+  }
 }
 
 export async function fetchInsightById(
@@ -797,6 +809,7 @@ async function fallbackAcceptInsightsJsonSequential(url: string, insights: Insig
   const headers = await buildAuthHeaders({
     "Content-Type": "application/json",
     Accept: "application/json",
+    "x-insights-partial-update": "true",
   });
 
   for (let i = 0; i < insights.length; i += 1) {

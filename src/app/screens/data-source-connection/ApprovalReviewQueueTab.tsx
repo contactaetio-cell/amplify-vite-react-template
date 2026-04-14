@@ -8,15 +8,7 @@ import type { Insight } from './types';
 import { fetchProjectApprovalBundle } from '../../api/insights';
 
 function getInsightDateLabel(insight: Insight): string | null {
-  const rawCreatedAt =
-    typeof insight.createdAt === 'string'
-      ? insight.createdAt
-      : insight.additional_refs &&
-          typeof insight.additional_refs === 'object' &&
-          !Array.isArray(insight.additional_refs) &&
-          typeof (insight.additional_refs as Record<string, unknown>).createdAt === 'string'
-        ? ((insight.additional_refs as Record<string, unknown>).createdAt as string)
-        : null;
+  const rawCreatedAt = typeof insight.createdAt === 'string' ? insight.createdAt : null;
   if (!rawCreatedAt) return null;
 
   const parsed = new Date(rawCreatedAt);
@@ -28,12 +20,14 @@ export function ApprovalReviewQueueTab({
   selectedInsightId,
   onSelectInsight,
   onBackToQueue,
+  onQueueMutation,
   onDeleteInsight
 }: {
   insights: Insight[];
   selectedInsightId?: string;
   onSelectInsight: (insightId: string) => void;
   onBackToQueue: () => void;
+  onQueueMutation?: () => void | Promise<void>;
   onDeleteInsight: (insightId: string) => void;
 }) {
   const selectedInsightFromQueue = selectedInsightId
@@ -67,17 +61,13 @@ export function ApprovalReviewQueueTab({
           document_id: project.project_id,
           createdAt: project.created_at,
           updatedAt: project.updated_at,
-          additional_refs: {
-            upload_mode: project.upload_mode,
-            context_urls: project.context_urls ?? [],
-            output_urls: project.output_urls ?? [],
-            raw_data_urls: project.raw_data_urls ?? [],
-            insight_ids: project.insight_ids ?? [],
-            createdAt: project.created_at,
-            updatedAt: project.updated_at,
-            preloaded_project_insights: bundle.insights ?? [],
-            insightfamilydata: bundle.insightfamilydata,
-          },
+          upload_mode: project.upload_mode,
+          context_urls: project.context_urls ?? [],
+          output_urls: project.output_urls ?? [],
+          raw_data_urls: project.raw_data_urls ?? [],
+          insight_ids: project.insight_ids ?? [],
+          preloaded_project_insights: bundle.insights ?? [],
+          insightfamilydata: bundle.insightfamilydata,
         };
 
         if (mounted) setSelectedInsight(hydratedInsight);
@@ -115,10 +105,16 @@ export function ApprovalReviewQueueTab({
             toast.success('Insight approved successfully!');
             onDeleteInsight(selectedInsight.insight_id);
             onBackToQueue();
+            if (onQueueMutation) {
+              void onQueueMutation();
+            }
           }}
           onDecline={(insightId) => {
             onDeleteInsight(insightId);
             onBackToQueue();
+            if (onQueueMutation) {
+              void onQueueMutation();
+            }
           }}
         />
         )

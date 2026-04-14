@@ -52,6 +52,17 @@ export interface FindingRef {
   timeframe?: string;
 }
 
+export interface InsightSubInsight {
+  finding_id: string;
+  text: string;
+  metric_value?: string | number;
+  metric_unit?: string;
+  dimensions?: Array<{ tag: string; value: string }>;
+  confidence?: number;
+  source_modality?: 'text' | 'table';
+  top_level_group_id?: string;
+}
+
 export interface Insight {
   insight_id: string;
   parent_insight_id?: string | null;
@@ -76,12 +87,20 @@ export interface Insight {
 
   supporting_chunks?: SupportingChunk[];
   findings?: FindingRef[];
+  sub_insights?: InsightSubInsight[];
 
   metadata?: MetadataEntry[];
   confidence?: InsightConfidence;
 
-  additional_refs?: unknown;
-  additionalRefs?: unknown;
+  footnote?: string;
+  insightfamilydata?: InsightFamilyData[];
+  preloaded_project_insights?: Insight[];
+
+  upload_mode?: UploadMode;
+  context_urls?: string[];
+  output_urls?: string[];
+  raw_data_urls?: string[];
+  insight_ids?: string[];
 
   user_id?: string;
   user_info?: {
@@ -131,6 +150,8 @@ export interface InsightFamilyData {
   row_count: number;
   dimensions: string[];
   metric_columns: string[];
+  table_markdown?: string;
+  table_text_chunk?: string;
   source_modalities: Array<'text' | 'table' | 'image'>;
   rows: InsightFamilyDataRow[];
   created_at: string;

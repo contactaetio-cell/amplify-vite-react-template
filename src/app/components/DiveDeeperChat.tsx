@@ -222,9 +222,6 @@ export function DiveDeeperChat({
                 <MessageCircle className="w-7 h-7 text-blue-600" />
               </div>
               <h3 className="font-semibold text-gray-900 mb-2">Ask me anything about these insights</h3>
-              <p className="text-sm text-gray-500 mb-6 max-w-md mx-auto">
-                I will use HTTP streaming to answer with grounded detail from your selected insights.
-              </p>
             </div>
           )}
 

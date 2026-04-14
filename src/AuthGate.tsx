@@ -1,11 +1,10 @@
-// AuthGate.tsx
-import { useAuthenticator } from "@aws-amplify/ui-react";
 import { Navigate } from "react-router";
+import { useResolvedAuthStatus } from "./useResolvedAuthStatus";
 
 export default function AuthGate({ children }: { children: JSX.Element }) {
-  const { authStatus } = useAuthenticator(context => [context.authStatus]);
+  const authStatus = useResolvedAuthStatus();
 
-  if (authStatus === "configuring") return null;
+  if (authStatus === "loading") return null;
 
   if (authStatus !== "authenticated") {
     return <Navigate to="/" replace />;

@@ -74,17 +74,168 @@ type TableDimensionFilterOption = {
 };
 
 type TableDimensionFilters = Record<string, string[]>;
+type MarkdownTable = {
+  title?: string;
+  headers: string[];
+  rows: string[][];
+};
 
-function toObjectRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {};
+type MarkdownTableWithHeaderMap = MarkdownTable & {
+  headerIndexByKey: Map<string, number>;
+};
+
+function parseMarkdownTableCells(line: string): string[] {
+  const trimmed = line.trim();
+  const normalized = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed;
+  const content = normalized.endsWith('|') ? normalized.slice(0, -1) : normalized;
+  const cells: string[] = [];
+  let current = '';
+  let escaped = false;
+
+  for (const char of content) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '|') {
+      cells.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
   }
-  return value as Record<string, unknown>;
+
+  cells.push(current.trim());
+  return cells;
+}
+
+function isMarkdownSeparatorLine(line: string): boolean {
+  const cells = parseMarkdownTableCells(line);
+  if (cells.length === 0) return false;
+  return cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, '')));
+}
+
+function parseMarkdownTables(markdown: string): MarkdownTable[] {
+  const lines = markdown
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd());
+  const tables: MarkdownTable[] = [];
+  let activeTitle: string | undefined;
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index]?.trim() ?? '';
+    if (!line) {
+      index += 1;
+      continue;
+    }
+
+    if (line.startsWith('### ')) {
+      activeTitle = line.slice(4).trim() || undefined;
+      index += 1;
+      continue;
+    }
+
+    const isCandidateHeader = line.startsWith('|');
+    const nextLine = (lines[index + 1] ?? '').trim();
+    if (!isCandidateHeader || !nextLine.startsWith('|') || !isMarkdownSeparatorLine(nextLine)) {
+      index += 1;
+      continue;
+    }
+
+    const headers = parseMarkdownTableCells(line);
+    index += 2;
+
+    const rows: string[][] = [];
+    while (index < lines.length) {
+      const rowLine = (lines[index] ?? '').trim();
+      if (!rowLine.startsWith('|')) break;
+      rows.push(parseMarkdownTableCells(rowLine));
+      index += 1;
+    }
+
+    if (headers.length > 0) {
+      tables.push({
+        title: activeTitle,
+        headers,
+        rows,
+      });
+    }
+    activeTitle = undefined;
+  }
+
+  return tables;
+}
+
+function normalizeDimensionKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s-]+/g, '');
+}
+
+function buildMarkdownTableHeaderMap(table: MarkdownTable): MarkdownTableWithHeaderMap {
+  const headerIndexByKey = new Map<string, number>();
+  table.headers.forEach((header, index) => {
+    const normalized = normalizeDimensionKey(header);
+    if (!normalized) return;
+    if (!headerIndexByKey.has(normalized)) {
+      headerIndexByKey.set(normalized, index);
+    }
+  });
+  return {
+    ...table,
+    headerIndexByKey,
+  };
+}
+
+function getMarkdownFilterOptions(
+  tables: MarkdownTableWithHeaderMap[],
+  dimensions: string[],
+): TableDimensionFilterOption[] {
+  const options: TableDimensionFilterOption[] = [];
+  for (const dimension of dimensions) {
+    const normalizedDimension = normalizeDimensionKey(dimension);
+    const values = new Set<string>();
+    for (const table of tables) {
+      const columnIndex = table.headerIndexByKey.get(normalizedDimension);
+      if (columnIndex === undefined) continue;
+      for (const row of table.rows) {
+        const value = String(row[columnIndex] ?? '').trim();
+        if (value) values.add(value);
+      }
+    }
+    options.push({
+      dimension,
+      values: Array.from(values).sort((a, b) => a.localeCompare(b)),
+    });
+  }
+  return options.filter((option) => option.values.length > 0);
+}
+
+function markdownRowMatchesDimensionFilters(
+  row: string[],
+  table: MarkdownTableWithHeaderMap,
+  dimensions: string[],
+  selectedFilters: TableDimensionFilters,
+): boolean {
+  return dimensions.every((dimension) => {
+    const selectedValues = selectedFilters[dimension] ?? [];
+    if (selectedValues.length === 0) return true;
+    const columnIndex = table.headerIndexByKey.get(normalizeDimensionKey(dimension));
+    if (columnIndex === undefined) return true;
+    const rowValue = String(row[columnIndex] ?? '').trim();
+    return selectedValues.includes(rowValue);
+  });
 }
 
 function getInsightFootnote(insight: BackendInsight): string {
-  const refs = toObjectRecord(insight.additional_refs ?? insight.additionalRefs);
-  const footnote = refs.footnote;
+  const footnote = insight.footnote;
   if (typeof footnote === 'string' && footnote.trim().length > 0) {
     return footnote.trim();
   }
@@ -111,7 +262,9 @@ function toIsoStringFromDateInput(value: string): string {
 
 function getMetadataValueByTag(metadata: MetadataEntry[] | undefined, tag: string): string {
   const normalizedTag = tag.trim().toLowerCase();
-  const match = (metadata ?? []).find((entry) => entry.tag.trim().toLowerCase() === normalizedTag);
+  const match = (metadata ?? []).find(
+    (entry) => String(entry?.tag ?? '').trim().toLowerCase() === normalizedTag,
+  );
   return match?.value ?? '';
 }
 
@@ -119,7 +272,7 @@ function upsertMetadataEntry(metadata: MetadataEntry[], tag: string, value: stri
   const normalizedTag = tag.trim().toLowerCase();
   const nextValue = value.trim();
   const next = [...metadata];
-  const index = next.findIndex((entry) => entry.tag.trim().toLowerCase() === normalizedTag);
+  const index = next.findIndex((entry) => String(entry?.tag ?? '').trim().toLowerCase() === normalizedTag);
 
   if (!nextValue) {
     return index >= 0 ? next.filter((_, entryIndex) => entryIndex !== index) : next;
@@ -152,16 +305,19 @@ function cloneInsightFamilyData(data: InsightFamilyData): InsightFamilyData {
     source_modalities: [...data.source_modalities],
     rows: data.rows.map((row) => ({
       ...row,
-      filter_values: row.filter_values.map((value) => ({ ...value })),
-      supporting_refs: row.supporting_refs.map((ref) => ({ ...ref })),
+      filter_values: (Array.isArray(row.filter_values) ? row.filter_values : []).map((value) => ({ ...value })),
+      supporting_refs: (Array.isArray(row.supporting_refs) ? row.supporting_refs : []).map((ref) => ({ ...ref })),
     })),
   };
 }
 
 function getRowDimensionValue(row: InsightFamilyDataRow, dimension: string): string {
   const normalizedDimension = dimension.trim().toLowerCase();
-  const match = row.filter_values.find((entry) => entry.tag.trim().toLowerCase() === normalizedDimension);
-  return match?.value ?? '';
+  const filterValues = Array.isArray(row.filter_values) ? row.filter_values : [];
+  const match = filterValues.find(
+    (entry) => String(entry?.tag ?? '').trim().toLowerCase() === normalizedDimension,
+  );
+  return String(match?.value ?? '');
 }
 
 function getTableDimensionFilterOptions(data: InsightFamilyData | null): TableDimensionFilterOption[] {
@@ -226,6 +382,32 @@ function mapMetadata(metadataPairs: MetadataKeyValue[]): MetadataField[] {
     label: toTitleLabel(entry.key),
     value: entry.value,
     type: 'text',
+  }));
+}
+
+function aggregateMetadataFieldsForDisplay(fields: MetadataField[]): MetadataField[] {
+  const byLabel = new Map<string, { base: MetadataField; values: Set<string> }>();
+
+  for (const field of fields) {
+    const label = String(field?.label ?? '').trim();
+    if (!label) continue;
+    const key = label.toLowerCase();
+    const value = String(field?.value ?? '').trim();
+
+    const existing = byLabel.get(key);
+    if (!existing) {
+      const values = new Set<string>();
+      if (value) values.add(value);
+      byLabel.set(key, { base: field, values });
+      continue;
+    }
+
+    if (value) existing.values.add(value);
+  }
+
+  return Array.from(byLabel.values()).map(({ base, values }) => ({
+    ...base,
+    value: Array.from(values).join(', '),
   }));
 }
 
@@ -334,6 +516,31 @@ function getEditableMetricValue(
   return row.value_text?.trim() || '';
 }
 
+type InsightSubFinding = NonNullable<BackendInsight['sub_insights']>[number];
+
+function formatSubInsightDimensions(subInsight: InsightSubFinding): string {
+  const dimensions = Array.isArray(subInsight.dimensions) ? subInsight.dimensions : [];
+  const formatted = dimensions
+    .map((dimension) => {
+      const tag = String(dimension?.tag ?? '').trim();
+      const value = String(dimension?.value ?? '').trim();
+      if (!tag || !value) return '';
+      return `${tag}: ${value}`;
+    })
+    .filter(Boolean);
+  return formatted.length > 0 ? formatted.join(' | ') : 'All segments';
+}
+
+function formatSubInsightMetric(subInsight: InsightSubFinding): string {
+  if (subInsight.metric_value === undefined || subInsight.metric_value === null) {
+    return '';
+  }
+  const value = String(subInsight.metric_value).trim();
+  if (!value) return '';
+  const unit = String(subInsight.metric_unit ?? '').trim();
+  return unit ? `${value} ${unit}` : value;
+}
+
 export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode = false }: InsightDetailProps) {
   const location = useLocation();
   const [rootInsight, setRootInsight] = useState<BackendInsight | null>(null);
@@ -355,6 +562,7 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
   const [tableDimensionFilters, setTableDimensionFilters] = useState<TableDimensionFilters>({});
   const [isSavingEdits, setIsSavingEdits] = useState<boolean>(false);
   const [showAllKeyMetadata, setShowAllKeyMetadata] = useState<boolean>(false);
+  const [showAllChildrenInsights, setShowAllChildrenInsights] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -394,6 +602,7 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
       setChildInsights([]);
       setRelatedInsights([]);
       setShowAllKeyMetadata(false);
+      setShowAllChildrenInsights(false);
       setIsEditingPage(false);
       setEditStatement('');
       setEditDetailedAnalysis('');
@@ -418,7 +627,14 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
           return;
         }
 
-        const rootInsight = tree.insight[0];
+        const treeRootInsight = tree.insight[0];
+        const rootInsight =
+          detail?.insight && detail.insight.insight_id === treeRootInsight.insight_id
+            ? {
+                ...treeRootInsight,
+                ...detail.insight,
+              }
+            : treeRootInsight;
         setRootInsight(rootInsight);
         setInsightData(tree.data ?? null);
         const mappedChildren = tree.children.map((child) => mapBackendInsightToUiInsight(child));
@@ -519,10 +735,11 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
         ...prev,
         rows: prev.rows.map((row) => {
           if (row.row_id !== rowId) return row;
-          const existingIndex = row.filter_values.findIndex(
-            (entry) => entry.tag.trim().toLowerCase() === normalizedDimension,
+          const rowFilterValues = Array.isArray(row.filter_values) ? row.filter_values : [];
+          const existingIndex = rowFilterValues.findIndex(
+            (entry) => String(entry?.tag ?? '').trim().toLowerCase() === normalizedDimension,
           );
-          const nextFilterValues = [...row.filter_values];
+          const nextFilterValues = [...rowFilterValues];
           if (existingIndex >= 0) {
             nextFilterValues[existingIndex] = {
               ...nextFilterValues[existingIndex],
@@ -609,13 +826,12 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
       setIsSavingEdits(true);
       let normalizedMetadata = editMetadata
         .map((entry) => ({
-          tag: entry.tag.trim(),
-          value: entry.value.trim(),
+          tag: String(entry?.tag ?? '').trim(),
+          value: String(entry?.value ?? '').trim(),
           confidence: entry.confidence ?? 1,
         }))
         .filter((entry) => entry.tag.length > 0 && entry.value.length > 0);
       normalizedMetadata = upsertMetadataEntry(normalizedMetadata, 'expiration', editExpiryDate);
-      const additionalRefs = toObjectRecord(rootInsight.additional_refs ?? rootInsight.additionalRefs);
       const creationDateForSave = editCreationDate || formatDateInputValue(new Date().toISOString());
       const updatedRootInsight = await updateInsightById(rootInsight.insight_id, {
         createdAt: toIsoStringFromDateInput(creationDateForSave) || rootInsight.createdAt,
@@ -623,10 +839,7 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
         summary: editDetailedAnalysis,
         status: editStatus.trim() || undefined,
         metadata: normalizedMetadata,
-        additional_refs: {
-          ...additionalRefs,
-          footnote: editFootnote.trim(),
-        },
+        footnote: editFootnote.trim(),
         user_info: {
           ...(rootInsight.user_info ?? {}),
           full_name: editAuthorName.trim(),
@@ -690,7 +903,64 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
       rowMatchesDimensionFilters(row, insightData.dimensions, tableDimensionFilters),
     );
   }, [insightData, tableDimensionFilters]);
+  const markdownTables = useMemo(
+    () => (insightData?.table_markdown ? parseMarkdownTables(insightData.table_markdown) : []),
+    [insightData?.table_markdown],
+  );
+  const markdownTablesWithHeaderMap = useMemo(
+    () => markdownTables.map((table) => buildMarkdownTableHeaderMap(table)),
+    [markdownTables],
+  );
+  const markdownFilterOptions = useMemo(
+    () =>
+      insightData
+        ? getMarkdownFilterOptions(markdownTablesWithHeaderMap, insightData.dimensions)
+        : [],
+    [markdownTablesWithHeaderMap, insightData],
+  );
+  const markdownFilterOptionByDimension = useMemo(
+    () => new Map(markdownFilterOptions.map((option) => [option.dimension, option])),
+    [markdownFilterOptions],
+  );
+  const markdownDimensionByHeaderKey = useMemo(() => {
+    const byHeaderKey = new Map<string, string>();
+    for (const dimension of insightData?.dimensions ?? []) {
+      const key = normalizeDimensionKey(dimension);
+      if (!key || byHeaderKey.has(key)) continue;
+      byHeaderKey.set(key, dimension);
+    }
+    return byHeaderKey;
+  }, [insightData?.dimensions]);
+  const filteredMarkdownTables = useMemo(() => {
+    if (!insightData) return [];
+    return markdownTablesWithHeaderMap.map((table) => ({
+      ...table,
+      rows: table.rows.filter((row) =>
+        markdownRowMatchesDimensionFilters(row, table, insightData.dimensions, tableDimensionFilters),
+      ),
+    }));
+  }, [insightData, markdownTablesWithHeaderMap, tableDimensionFilters]);
+  const filteredMarkdownRowCount = useMemo(
+    () => filteredMarkdownTables.reduce((total, table) => total + table.rows.length, 0),
+    [filteredMarkdownTables],
+  );
+  const totalMarkdownRowCount = useMemo(
+    () => markdownTablesWithHeaderMap.reduce((total, table) => total + table.rows.length, 0),
+    [markdownTablesWithHeaderMap],
+  );
   const insightMetadata = insight?.metadata ?? [];
+  const aggregatedKeyMetadata = useMemo(
+    () => aggregateMetadataFieldsForDisplay(insightMetadata),
+    [insightMetadata],
+  );
+  const childSubInsights = useMemo(
+    () => (Array.isArray(rootInsight?.sub_insights) ? rootInsight.sub_insights : []),
+    [rootInsight?.sub_insights],
+  );
+  const displayedChildSubInsights = useMemo(
+    () => (showAllChildrenInsights ? childSubInsights : childSubInsights.slice(0, 5)),
+    [childSubInsights, showAllChildrenInsights],
+  );
   const requiredFields = insightMetadata.filter((m) => m.isRequired);
   const optionalFields = insightMetadata.filter((m) => !m.isRequired);
   const showInlineEditor = forceEditMode || isEditingPage;
@@ -1061,9 +1331,9 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
                         <TableBody>
                           {filteredEditRows.map((row) => {
                             const filterByTag = new Map(
-                              row.filter_values.map((filterValue) => [
-                                filterValue.tag.trim().toLowerCase(),
-                                filterValue.value,
+                              (Array.isArray(row.filter_values) ? row.filter_values : []).map((filterValue) => [
+                                String(filterValue?.tag ?? '').trim().toLowerCase(),
+                                String(filterValue?.value ?? ''),
                               ]),
                             );
 
@@ -1161,6 +1431,55 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
                     <h3 className="text-sm font-medium text-gray-900 mb-2">Source Citation</h3>
                     <p className="text-sm text-gray-600 italic whitespace-normal break-words">{insight.footnote}</p>
                   </div>
+
+                  {childSubInsights.length > 0 && (
+                    <>
+                      <Separator className="my-6" />
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-900 mb-2">Children Insights</h3>
+                        <p className="text-xs text-gray-500 mb-3">
+                          {childSubInsights.length} child insight finding
+                          {childSubInsights.length === 1 ? '' : 's'}
+                        </p>
+                        <div className="space-y-1.5">
+                          {displayedChildSubInsights.map((subInsight, index) => {
+                            const metric = formatSubInsightMetric(subInsight);
+                            return (
+                              <div
+                                key={`${subInsight.finding_id}-${index}`}
+                                className="rounded border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                              >
+                                <span className="font-medium">{formatSubInsightDimensions(subInsight)}</span>
+                                <span className="text-gray-500">{' -> '}</span>
+                                <span>{subInsight.text}</span>
+                                {metric && (
+                                  <>
+                                    <span className="text-gray-500">{' ('}</span>
+                                    <span>{metric}</span>
+                                    <span className="text-gray-500">{')'}</span>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {childSubInsights.length > 5 && (
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[11px] text-gray-500">
+                                Showing {displayedChildSubInsights.length} of {childSubInsights.length} child insights
+                              </p>
+                              <Button
+                                variant="link"
+                                className="h-auto p-0 text-[11px] text-blue-600"
+                                onClick={() => setShowAllChildrenInsights((prev) => !prev)}
+                              >
+                                {showAllChildrenInsights ? 'Show less' : 'View all'}
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </Card>
               </TabsContent>
               
@@ -1487,22 +1806,22 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
               <h3 className="font-semibold text-gray-900 mb-4">Key Metadata</h3>
               
               <div className="space-y-3">
-                {(showAllKeyMetadata ? insight.metadata : insight.metadata.slice(0, 4)).map((field) => (
+                {(showAllKeyMetadata ? aggregatedKeyMetadata : aggregatedKeyMetadata.slice(0, 4)).map((field) => (
                   <div key={field.id}>
                     <label className="text-xs text-gray-600 uppercase tracking-wide">{field.label}</label>
                     <p className="text-sm text-gray-900 font-medium mt-1 whitespace-normal break-words">{field.value}</p>
                   </div>
                 ))}
-                {insight.metadata.length > 4 && !showAllKeyMetadata && (
+                {aggregatedKeyMetadata.length > 4 && !showAllKeyMetadata && (
                   <Button
                     variant="link"
                     className="h-auto p-0 text-blue-600 text-sm"
                     onClick={() => setShowAllKeyMetadata(true)}
                   >
-                    View all {insight.metadata.length} fields →
+                    View all {aggregatedKeyMetadata.length} fields →
                   </Button>
                 )}
-                {insight.metadata.length > 4 && showAllKeyMetadata && (
+                {aggregatedKeyMetadata.length > 4 && showAllKeyMetadata && (
                   <Button
                     variant="link"
                     className="h-auto p-0 text-blue-600 text-sm"
@@ -1608,7 +1927,7 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
           </div>
         </div>
 
-            {insightData && insightData.rows.length > 0 && (
+            {insightData && (markdownTables.length > 0 || insightData.rows.length > 0) && (
               <Card className="mt-8 p-6">
             <div className="mb-4">
               <h2 className="font-semibold text-gray-900">Insight Data Table</h2>
@@ -1617,116 +1936,204 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
               </p>
             </div>
 
-            <div className="space-y-3">
-              {readOnlyTableFilterOptions.length > 0 && (
-                <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-600">
-                      Insight Family Metadata Filters
-                    </p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setTableDimensionFilters({})}
-                      className="h-7 px-2 text-xs"
-                    >
-                      Clear Filters
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                    {readOnlyTableFilterOptions.map((option) => {
-                      const selectedValues = tableDimensionFilters[option.dimension] ?? [];
-                      return (
-                        <div
-                          key={`read-filter-${option.dimension}`}
-                          className="space-y-2 rounded-md border border-gray-200 bg-white p-3"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <label className="text-xs text-gray-600">{toDisplayLabel(option.dimension)}</label>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 px-2 text-xs"
-                              onClick={() => handleClearTableFilterDimension(option.dimension)}
-                              disabled={selectedValues.length === 0}
-                            >
-                              All
-                            </Button>
-                          </div>
-                          <p className="text-xs text-gray-500">
-                            {selectedValues.length === 0
-                              ? `All ${toDisplayLabel(option.dimension)} values`
-                              : `${selectedValues.length} selected`}
-                          </p>
-                          <div className="max-h-32 space-y-1 overflow-y-auto pr-1">
-                            {option.values.map((value) => (
-                              <label
-                                key={`read-filter-${option.dimension}-${value}`}
-                                className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-gray-50"
-                              >
-                                <Checkbox
-                                  checked={selectedValues.includes(value)}
-                                  onCheckedChange={(checked) =>
-                                    handleTableFilterChange(option.dimension, value, checked === true)
-                                  }
-                                />
-                                <span className="text-xs text-gray-700">{value}</span>
-                              </label>
+            {markdownTables.length > 0 ? (
+              <div className="space-y-4">
+                <p className="text-xs text-gray-600">
+                  Showing {filteredMarkdownRowCount} of {totalMarkdownRowCount} rows
+                </p>
+                {filteredMarkdownTables.map((table, tableIndex) => (
+                  <div key={`markdown-table-${tableIndex}`} className="space-y-2">
+                    {table.title && (
+                      <p className="text-sm font-medium text-gray-700">{table.title}</p>
+                    )}
+                    <div className="overflow-x-auto rounded-md border border-gray-200">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            {table.headers.map((header, headerIndex) => (
+                              <TableHead key={`header-${tableIndex}-${headerIndex}`}>
+                                <div className="flex items-center gap-2">
+                                  <span>{header || `Column ${headerIndex + 1}`}</span>
+                                  {(() => {
+                                    const dimension = markdownDimensionByHeaderKey.get(
+                                      normalizeDimensionKey(header),
+                                    );
+                                    if (!dimension) return null;
+                                    const option = markdownFilterOptionByDimension.get(dimension);
+                                    if (!option || option.values.length === 0) return null;
+                                    const selectedValues = tableDimensionFilters[dimension] ?? [];
+                                    return (
+                                      <details className="relative">
+                                        <summary className="list-none cursor-pointer select-none rounded border border-gray-200 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50">
+                                          Filter{selectedValues.length > 0 ? ` (${selectedValues.length})` : ''}
+                                        </summary>
+                                        <div className="absolute right-0 z-20 mt-1 w-56 rounded-md border border-gray-200 bg-white p-2 shadow-lg">
+                                          <div className="mb-2 flex items-center justify-between">
+                                            <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                                              {toDisplayLabel(dimension)}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              className="text-[11px] text-blue-600 hover:text-blue-700"
+                                              onClick={() => handleClearTableFilterDimension(dimension)}
+                                              disabled={selectedValues.length === 0}
+                                            >
+                                              All
+                                            </button>
+                                          </div>
+                                          <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
+                                            {option.values.map((value) => (
+                                              <label
+                                                key={`header-filter-${tableIndex}-${dimension}-${value}`}
+                                                className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-gray-50"
+                                              >
+                                                <Checkbox
+                                                  checked={selectedValues.includes(value)}
+                                                  onCheckedChange={(checked) =>
+                                                    handleTableFilterChange(dimension, value, checked === true)
+                                                  }
+                                                />
+                                                <span className="text-xs text-gray-700">{value}</span>
+                                              </label>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      </details>
+                                    );
+                                  })()}
+                                </div>
+                              </TableHead>
                             ))}
-                          </div>
-                        </div>
-                      );
-                    })}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {table.rows.map((row, rowIndex) => (
+                            <TableRow key={`markdown-row-${tableIndex}-${rowIndex}`}>
+                              {table.headers.map((_, columnIndex) => (
+                                <TableCell key={`markdown-cell-${tableIndex}-${rowIndex}-${columnIndex}`}>
+                                  {row[columnIndex] ?? '—'}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
-                </div>
-              )}
-              <p className="text-xs text-gray-600">
-                Showing {filteredReadOnlyRows.length} of {insightData.rows.length} rows
-              </p>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {insightData.dimensions.map((dimension) => (
-                        <TableHead key={dimension}>{toDisplayLabel(dimension)}</TableHead>
-                      ))}
-                      {insightData.metric_columns.map((metricColumn) => (
-                        <TableHead key={metricColumn}>{toDisplayLabel(metricColumn)}</TableHead>
-                      ))}
-                      <TableHead>Evidence</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredReadOnlyRows.map((row) => {
-                      const filterByTag = new Map(
-                        row.filter_values.map((filterValue) => [
-                          filterValue.tag.trim().toLowerCase(),
-                          filterValue.value,
-                        ]),
-                      );
-
-                      return (
-                        <TableRow key={row.row_id}>
-                          {insightData.dimensions.map((dimension) => (
-                            <TableCell key={`${row.row_id}-${dimension}`}>
-                              {filterByTag.get(dimension.trim().toLowerCase()) ?? '—'}
-                            </TableCell>
-                          ))}
-                          {insightData.metric_columns.map((metricColumn) => (
-                            <TableCell key={`${row.row_id}-${metricColumn}`}>
-                              {formatMetricCell(row, metricColumn, insightData.metric_columns)}
-                            </TableCell>
-                          ))}
-                          <TableCell>{row.supporting_refs.length}</TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                ))}
               </div>
-            </div>
+            ) : (
+              <div className="space-y-3">
+                {readOnlyTableFilterOptions.length > 0 && (
+                  <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-600">
+                        Insight Family Metadata Filters
+                      </p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setTableDimensionFilters({})}
+                        className="h-7 px-2 text-xs"
+                      >
+                        Clear Filters
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                      {readOnlyTableFilterOptions.map((option) => {
+                        const selectedValues = tableDimensionFilters[option.dimension] ?? [];
+                        return (
+                          <div
+                            key={`read-filter-${option.dimension}`}
+                            className="space-y-2 rounded-md border border-gray-200 bg-white p-3"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <label className="text-xs text-gray-600">{toDisplayLabel(option.dimension)}</label>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs"
+                                onClick={() => handleClearTableFilterDimension(option.dimension)}
+                                disabled={selectedValues.length === 0}
+                              >
+                                All
+                              </Button>
+                            </div>
+                            <p className="text-xs text-gray-500">
+                              {selectedValues.length === 0
+                                ? `All ${toDisplayLabel(option.dimension)} values`
+                                : `${selectedValues.length} selected`}
+                            </p>
+                            <div className="max-h-32 space-y-1 overflow-y-auto pr-1">
+                              {option.values.map((value) => (
+                                <label
+                                  key={`read-filter-${option.dimension}-${value}`}
+                                  className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-gray-50"
+                                >
+                                  <Checkbox
+                                    checked={selectedValues.includes(value)}
+                                    onCheckedChange={(checked) =>
+                                      handleTableFilterChange(option.dimension, value, checked === true)
+                                    }
+                                  />
+                                  <span className="text-xs text-gray-700">{value}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <p className="text-xs text-gray-600">
+                  Showing {filteredReadOnlyRows.length} of {insightData.rows.length} rows
+                </p>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {insightData.dimensions.map((dimension) => (
+                          <TableHead key={dimension}>{toDisplayLabel(dimension)}</TableHead>
+                        ))}
+                        {insightData.metric_columns.map((metricColumn) => (
+                          <TableHead key={metricColumn}>{toDisplayLabel(metricColumn)}</TableHead>
+                        ))}
+                        <TableHead>Evidence</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredReadOnlyRows.map((row) => {
+                        const filterByTag = new Map(
+                          (Array.isArray(row.filter_values) ? row.filter_values : []).map((filterValue) => [
+                            String(filterValue?.tag ?? '').trim().toLowerCase(),
+                            String(filterValue?.value ?? ''),
+                          ]),
+                        );
+
+                        return (
+                          <TableRow key={row.row_id}>
+                            {insightData.dimensions.map((dimension) => (
+                              <TableCell key={`${row.row_id}-${dimension}`}>
+                                {filterByTag.get(dimension.trim().toLowerCase()) ?? '—'}
+                              </TableCell>
+                            ))}
+                            {insightData.metric_columns.map((metricColumn) => (
+                              <TableCell key={`${row.row_id}-${metricColumn}`}>
+                                {formatMetricCell(row, metricColumn, insightData.metric_columns)}
+                              </TableCell>
+                            ))}
+                            <TableCell>{row.supporting_refs.length}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
               </Card>
             )}
           </>

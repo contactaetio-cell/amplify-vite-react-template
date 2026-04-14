@@ -31,6 +31,17 @@ interface InsightsListProps {
 
 const STATUS_OPTIONS = ['all', 'Pending', 'Completed', 'Rejected'];
 
+function formatCreatedAt(value?: string): string {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return parsed.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 export function InsightsList({ mode, onViewInsight }: InsightsListProps) {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
@@ -136,6 +147,7 @@ export function InsightsList({ mode, onViewInsight }: InsightsListProps) {
     mode === 'mine'
       ? 'Insights created under your user account'
       : 'Explore all available insights across your organization';
+  const showCreatedAtColumn = mode === 'all';
 
   return (
     <div className="flex-1 overflow-auto bg-gray-50">
@@ -207,6 +219,7 @@ export function InsightsList({ mode, onViewInsight }: InsightsListProps) {
               <TableRow>
                 <TableHead className="min-w-[420px]">Insight</TableHead>
                 <TableHead className="w-52">User</TableHead>
+                {showCreatedAtColumn && <TableHead className="w-36">Created At</TableHead>}
                 <TableHead className="w-36">Status</TableHead>
                 <TableHead className="w-60">Source</TableHead>
                 <TableHead className="w-24">Action</TableHead>
@@ -215,7 +228,7 @@ export function InsightsList({ mode, onViewInsight }: InsightsListProps) {
             <TableBody>
               {!loading && filteredInsights.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-sm text-gray-500 py-10">
+                  <TableCell colSpan={showCreatedAtColumn ? 6 : 5} className="text-center text-sm text-gray-500 py-10">
                     No insights found for current filters.
                   </TableCell>
                 </TableRow>
@@ -240,6 +253,11 @@ export function InsightsList({ mode, onViewInsight }: InsightsListProps) {
                     </div>
                   </TableCell>
                   <TableCell className="text-sm text-gray-700">{insight.user_id ?? 'Unknown'}</TableCell>
+                  {showCreatedAtColumn && (
+                    <TableCell className="text-sm text-gray-700">
+                      {formatCreatedAt(insight.createdAt)}
+                    </TableCell>
+                  )}
                   <TableCell>
                     <Badge variant="secondary">{insight.status ?? 'Unknown'}</Badge>
                   </TableCell>

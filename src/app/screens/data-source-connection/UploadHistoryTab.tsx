@@ -16,30 +16,21 @@ import type { Insight } from './types';
 import { fetchTopLevelInsightsByUser } from '../../api/insights';
 import { getCurrentUser } from 'aws-amplify/auth';
 
-const getNumericRef = (insight: Insight, key: string): number | null => {
-  const refs = insight.additional_refs;
-  if (!refs || typeof refs !== 'object') return null;
-  const value = (refs as Record<string, unknown>)[key];
+const getNumericValue = (insight: Insight, key: string): number | null => {
+  const value = (insight as Record<string, unknown>)[key];
   return typeof value === 'number' ? value : null;
 };
 
 const mapInsightToProcessedUpload = (insight: Insight): ProcessedUpload => {
-  const insightsApproved = getNumericRef(insight, 'countAccepted') ?? 0;
-  const insightsDeclined = getNumericRef(insight, 'countDeclined') ?? 0;
+  const insightsApproved = getNumericValue(insight, 'countAccepted') ?? 0;
+  const insightsDeclined = getNumericValue(insight, 'countDeclined') ?? 0;
   const insightsGenerated =
-    getNumericRef(insight, 'numberChildInsights') ?? insightsApproved + insightsDeclined;
-
-  const rawCreatedAt =
-    insight.additional_refs &&
-    typeof insight.additional_refs === 'object' &&
-    !Array.isArray(insight.additional_refs)
-      ? (insight.additional_refs as Record<string, unknown>).createdAt
-      : null;
+    getNumericValue(insight, 'numberChildInsights') ?? insightsApproved + insightsDeclined;
 
   return {
     id: insight.insight_id,
     queueId: insight.document_id || insight.insight_id,
-    uploadDate: typeof rawCreatedAt === 'string' ? rawCreatedAt : new Date().toISOString(),
+    uploadDate: typeof insight.createdAt === 'string' ? insight.createdAt : new Date().toISOString(),
     uploadedBy: insight.user_id ?? 'Unknown user',
     insightsGenerated,
     insightsApproved,

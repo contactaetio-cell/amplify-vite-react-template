@@ -61,7 +61,11 @@ async function runExtractionPipeline(
   return [];
 }
 
-export function UploadResearchTab() {
+interface UploadResearchTabProps {
+  onSubmissionComplete?: () => void | Promise<void>;
+}
+
+export function UploadResearchTab({ onSubmissionComplete }: UploadResearchTabProps) {
   const [uploadMode, setUploadMode] = useState<UploadMode>('document');
   const [researchContext, setResearchContext] = useState('');
   const [contextFiles, setContextFiles] = useState<UploadedFile[]>([]);
@@ -168,6 +172,9 @@ export function UploadResearchTab() {
       const queueId = `QUEUE-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
 
       setTimeout(() => {
+        if (onSubmissionComplete) {
+          void onSubmissionComplete();
+        }
         setIsSubmitting(false);
         setShowSuccess(true);
         setGeneratedQueueId(queueId);

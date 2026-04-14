@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
@@ -37,6 +37,124 @@ function getConfidenceScore(insight: Insight): number | null {
   return Math.min(1, Math.max(0, rawScore));
 }
 
+function normalizeTextValue(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeTextValue(item))
+      .filter(Boolean)
+      .join(', ');
+  }
+  return '';
+}
+
+function aggregateInsightsMetadataByTag(insights: Insight[]): Map<string, { tag: string; values: string[] }> {
+  const aggregated = new Map<string, { tag: string; values: Set<string> }>();
+
+  for (const insightItem of insights) {
+    const metadata = Array.isArray(insightItem.metadata) ? insightItem.metadata : [];
+    for (const entry of metadata) {
+      const normalizedTag = normalizeTextValue(entry.tag);
+      const normalizedValue = normalizeTextValue(entry.value);
+      if (!normalizedTag || !normalizedValue) continue;
+
+      const key = normalizedTag.toLowerCase();
+      const current = aggregated.get(key);
+      if (!current) {
+        aggregated.set(key, { tag: normalizedTag, values: new Set([normalizedValue]) });
+        continue;
+      }
+      current.values.add(normalizedValue);
+    }
+  }
+
+  return new Map(
+    Array.from(aggregated.entries()).map(([normalizedTag, data]) => [
+      normalizedTag,
+      {
+        tag: data.tag,
+        values: Array.from(data.values).sort((a, b) => a.localeCompare(b))
+      }
+    ])
+  );
+}
+
+function metadataEntriesEqual(left: MetadataEntry[], right: MetadataEntry[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    const leftEntry = left[index];
+    const rightEntry = right[index];
+    if (
+      normalizeTextValue(leftEntry?.tag) !== normalizeTextValue(rightEntry?.tag) ||
+      normalizeTextValue(leftEntry?.value) !== normalizeTextValue(rightEntry?.value) ||
+      (leftEntry?.confidence ?? 1) !== (rightEntry?.confidence ?? 1)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function removeMetadataTagFromInsight(item: Insight, normalizedTagKey: string): Insight {
+  return {
+    ...item,
+    metadata: (item.metadata ?? []).filter(
+      (entry) => normalizeTextValue(entry.tag).toLowerCase() !== normalizedTagKey
+    )
+  };
+}
+
+function syncProjectMetadataWithInsights(
+  currentMetadata: MetadataEntry[],
+  insights: Insight[]
+): MetadataEntry[] {
+  const aggregated = aggregateInsightsMetadataByTag(insights);
+  const nextMetadata: MetadataEntry[] = [];
+  const seenTags = new Set<string>();
+
+  for (const entry of currentMetadata) {
+    const normalizedTag = normalizeTextValue(entry.tag);
+    if (!normalizedTag) continue;
+    const normalizedTagKey = normalizedTag.toLowerCase();
+
+    if (normalizedTagKey === 'team') {
+      if (!seenTags.has(normalizedTagKey)) {
+        nextMetadata.push({ ...entry, tag: normalizedTag });
+        seenTags.add(normalizedTagKey);
+      }
+      continue;
+    }
+
+    const aggregatedEntry = aggregated.get(normalizedTagKey);
+    if (!aggregatedEntry) continue;
+
+    const normalizedValue = normalizeTextValue(entry.value);
+    const matchedValue = aggregatedEntry.values.find(
+      (candidate) => candidate.toLowerCase() === normalizedValue.toLowerCase()
+    );
+    const resolvedValue = matchedValue ?? aggregatedEntry.values[0] ?? '';
+
+    nextMetadata.push({
+      ...entry,
+      tag: aggregatedEntry.tag,
+      value: resolvedValue
+    });
+    seenTags.add(normalizedTagKey);
+  }
+
+  for (const [normalizedTagKey, aggregatedEntry] of aggregated.entries()) {
+    if (seenTags.has(normalizedTagKey)) continue;
+    nextMetadata.push({
+      tag: aggregatedEntry.tag,
+      value: aggregatedEntry.values[0] ?? '',
+      confidence: 1
+    });
+  }
+
+  return nextMetadata;
+}
+
 function ProjectInsightReviewCard({
   projectInsight,
   isExpanded,
@@ -58,7 +176,7 @@ function ProjectInsightReviewCard({
   setMetadataValue,
   getCustomFields,
   getFootnote,
-  setAdditionalRefValue,
+  setFootnoteValue,
   getInsightFamilyDataForInsight,
   formatDisplayDate
 }: {
@@ -82,7 +200,7 @@ function ProjectInsightReviewCard({
   setMetadataValue: (item: Insight, tag: string, value: string) => Insight;
   getCustomFields: (item: Insight) => { label: string; value: string }[];
   getFootnote: (item: Insight) => string;
-  setAdditionalRefValue: (item: Insight, key: string, value: unknown) => Insight;
+  setFootnoteValue: (item: Insight, value: string) => Insight;
   getInsightFamilyDataForInsight: (item: Insight) => InsightFamilyData | null;
   formatDisplayDate: (value: string) => string;
 }) {
@@ -254,7 +372,7 @@ function ProjectInsightReviewCard({
                   <Textarea
                     value={getFootnote(draft)}
                     onChange={(e) =>
-                      onEditDraftChange(setAdditionalRefValue(draft, 'footnote', e.target.value))
+                      onEditDraftChange(setFootnoteValue(draft, e.target.value))
                     }
                     className="min-h-[60px]"
                   />
@@ -501,6 +619,10 @@ export function ApprovalReviewPanel({
   const [editDraft, setEditDraft] = useState<Insight | null>(null);
   const [activeDocFilter, setActiveDocFilter] = useState<string | null>(null);
   const [expandedInsightIds, setExpandedInsightIds] = useState<Set<string>>(new Set());
+  const aggregatedMetadataByTag = useMemo(
+    () => aggregateInsightsMetadataByTag(projectInsights),
+    [projectInsights]
+  );
 
   const reviewStatusForInsight = (item: Insight): 'pending' | 'approved' | 'declined' => {
     const statusValue = item.status?.toLowerCase();
@@ -531,23 +653,11 @@ export function ApprovalReviewPanel({
     return { ...item, metadata };
   };
 
-  const getAdditionalRefs = (item: Insight): Record<string, unknown> =>
-    item.additional_refs && typeof item.additional_refs === 'object' && !Array.isArray(item.additional_refs)
-      ? (item.additional_refs as Record<string, unknown>)
-      : {};
-
   const getInsightFamilyDataForInsight = (item: Insight): InsightFamilyData | null => {
-    const refs = getAdditionalRefs(item);
-    const attached = refs.insight_family_data;
-    if (attached && typeof attached === 'object' && !Array.isArray(attached)) {
-      return attached as InsightFamilyData;
-    }
-
     const tableId = item.insight_family_data_id?.trim();
     if (!tableId) return null;
 
-    const rootRefs = getAdditionalRefs(insight);
-    const rootTables = rootRefs.insightfamilydata;
+    const rootTables = insight.insightfamilydata;
     if (!Array.isArray(rootTables)) return null;
     const matched = rootTables.find(
       (table): table is InsightFamilyData =>
@@ -561,17 +671,13 @@ export function ApprovalReviewPanel({
     return matched ?? null;
   };
 
-  const setAdditionalRefValue = (item: Insight, key: string, value: unknown): Insight => ({
+  const setFootnoteValue = (item: Insight, value: string): Insight => ({
     ...item,
-    additional_refs: {
-      ...getAdditionalRefs(item),
-      [key]: value
-    }
+    footnote: value
   });
 
   const getFootnote = (item: Insight): string => {
-    const refs = getAdditionalRefs(item);
-    const footnote = refs.footnote;
+    const footnote = item.footnote;
     if (typeof footnote === 'string') return footnote;
     return item.supporting_chunks?.[0]?.chunk_id
       ? `Source chunk: ${item.supporting_chunks[0].chunk_id}`
@@ -638,7 +744,10 @@ export function ApprovalReviewPanel({
     ...item,
     metadata: item.metadata?.map((entry) => ({ ...entry })),
     supporting_chunks: item.supporting_chunks?.map((chunk) => ({ ...chunk })),
-    additional_refs: { ...getAdditionalRefs(item) }
+    insightfamilydata: item.insightfamilydata ? [...item.insightfamilydata] : undefined,
+    preloaded_project_insights: item.preloaded_project_insights
+      ? [...item.preloaded_project_insights]
+      : undefined
   });
 
   const team = projectMetadata.find((entry) => entry.tag.toLowerCase() === 'team')?.value ?? '';
@@ -662,9 +771,8 @@ export function ApprovalReviewPanel({
         return;
       }
 
-      const refs = getAdditionalRefs(insight);
-      const preloadedInsightsRaw = refs.preloaded_project_insights;
-      if (Array.isArray(preloadedInsightsRaw)) {
+      const preloadedInsightsRaw = insight.preloaded_project_insights;
+      if (Array.isArray(preloadedInsightsRaw) && preloadedInsightsRaw.length > 0) {
         if (mounted) {
           setProjectInsights(
             preloadedInsightsRaw.filter(
@@ -726,9 +834,11 @@ export function ApprovalReviewPanel({
 
   const saveEditing = () => {
     if (!editDraft) return;
-    setProjectInsights((prev) =>
-      prev.map((insightItem) => (insightItem.insight_id === editDraft.insight_id ? editDraft : insightItem))
+    const nextProjectInsights = projectInsights.map((insightItem) =>
+      insightItem.insight_id === editDraft.insight_id ? editDraft : insightItem
     );
+    setProjectInsights(nextProjectInsights);
+    setProjectMetadata((prev) => syncProjectMetadataWithInsights(prev, nextProjectInsights));
     toast.success('Changes saved');
     setEditingId(null);
     setEditDraft(null);
@@ -759,22 +869,31 @@ export function ApprovalReviewPanel({
     setEditDraft(setCustomFieldValue(editDraft, index, field, val));
   };
 
+  const stripTransientProjectContext = (item: Insight): Insight => {
+    const { preloaded_project_insights, insightfamilydata, ...persistable } = item;
+    void preloaded_project_insights;
+    void insightfamilydata;
+    return persistable;
+  };
+
   const submitReviewDecision = async (decision: 'Approved' | 'Declined') => {
     if (!statement.trim()) {
       toast.error('Insight statement is required');
       return;
     }
 
+    const loadedCurrentInsight = projectInsights.find((item) => item.insight_id === insight.insight_id);
     const currentInsight: Insight = {
+      ...(loadedCurrentInsight ?? insight),
       ...insight,
       text: statement,
       metadata: projectMetadata,
       status: decision,
     };
 
-    const combinedInsights = [currentInsight, ...projectInsights];
+    const combinedInsights = [...projectInsights, currentInsight];
     const uniqueInsights = Array.from(
-      new Map(combinedInsights.map((item) => [item.insight_id, item])).values()
+      new Map(combinedInsights.map((item) => [item.insight_id, stripTransientProjectContext(item)])).values()
     );
 
     try {
@@ -822,7 +941,20 @@ export function ApprovalReviewPanel({
   };
 
   const removeProjectMetadata = (index: number) => {
+    const removedEntry = projectMetadata[index];
+    if (!removedEntry) return;
+
+    const normalizedTagKey = normalizeTextValue(removedEntry.tag).toLowerCase();
     setProjectMetadata((prev) => prev.filter((_, i) => i !== index));
+
+    if (!normalizedTagKey || normalizedTagKey === 'team') return;
+
+    setProjectInsights((prev) =>
+      prev.map((insightItem) => removeMetadataTagFromInsight(insightItem, normalizedTagKey))
+    );
+    setEditDraft((prev) =>
+      prev ? removeMetadataTagFromInsight(prev, normalizedTagKey) : prev
+    );
   };
 
   const setProjectTeam = (value: string) => {
@@ -844,6 +976,14 @@ export function ApprovalReviewPanel({
       return next;
     });
   };
+
+  useEffect(() => {
+    if (projectInsights.length === 0) return;
+    setProjectMetadata((prev) => {
+      const next = syncProjectMetadataWithInsights(prev, projectInsights);
+      return metadataEntriesEqual(prev, next) ? prev : next;
+    });
+  }, [projectInsights]);
 
   return (
     <div className="space-y-6">
@@ -922,11 +1062,48 @@ export function ApprovalReviewPanel({
                 </div>
                 <div className="flex-1">
                   <Label className="text-xs text-gray-500 mb-1">Value</Label>
-                  <Input
-                    value={entry.value}
-                    placeholder="e.g., Strategy"
-                    onChange={(e) => updateProjectMetadata(index, 'value', e.target.value)}
-                  />
+                  {(() => {
+                    const normalizedTag = entry.tag.trim().toLowerCase();
+                    const options = normalizedTag
+                      ? (aggregatedMetadataByTag.get(normalizedTag)?.values ?? [])
+                      : [];
+                    const valueOptions =
+                      entry.value && !options.includes(entry.value)
+                        ? [entry.value, ...options]
+                        : options;
+                    const selectValue = entry.value.trim() ? entry.value : '__EMPTY__';
+
+                    if (valueOptions.length === 0) {
+                      return (
+                        <Input
+                          value={entry.value}
+                          placeholder="e.g., Strategy"
+                          onChange={(e) => updateProjectMetadata(index, 'value', e.target.value)}
+                        />
+                      );
+                    }
+
+                    return (
+                      <Select
+                        value={selectValue}
+                        onValueChange={(value) =>
+                          updateProjectMetadata(index, 'value', value === '__EMPTY__' ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select value" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__EMPTY__">Select value</SelectItem>
+                          {valueOptions.map((optionValue) => (
+                            <SelectItem key={`${entry.tag}-${optionValue}`} value={optionValue}>
+                              {optionValue}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    );
+                  })()}
                 </div>
                 <button
                   onClick={() => removeProjectMetadata(index)}
@@ -1009,7 +1186,7 @@ export function ApprovalReviewPanel({
                     setMetadataValue={setMetadataValue}
                     getCustomFields={getCustomFields}
                     getFootnote={getFootnote}
-                    setAdditionalRefValue={setAdditionalRefValue}
+                    setFootnoteValue={setFootnoteValue}
                     getInsightFamilyDataForInsight={getInsightFamilyDataForInsight}
                     formatDisplayDate={formatDisplayDate}
                   />

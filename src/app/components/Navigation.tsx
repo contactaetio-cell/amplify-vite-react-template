@@ -3,11 +3,12 @@ import { Logo } from "./Logo";
 import { Menu } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
-import { useAuthenticator } from "@aws-amplify/ui-react";
+import { useResolvedAuthStatus } from "../../useResolvedAuthStatus";
 
 export function Navigation() {
   const [isOpen, setIsOpen] = useState(false);
-  const { authStatus } = useAuthenticator((context) => [context.authStatus]);
+  const authStatus = useResolvedAuthStatus();
+  const isAuthLoading = authStatus === "loading";
   const authCtaLabel = authStatus === "authenticated" ? "Dashboard" : "Log In";
   const authCtaPath = authStatus === "authenticated" ? "/dashboard/home" : "/login";
 
@@ -21,12 +22,16 @@ export function Navigation() {
 
           {/* Desktop navigation */}
           <div className="hidden md:flex items-center gap-4">
-            <Link
-              to={authCtaPath}
-              className="px-4 py-2 text-aetio-blue-200 hover:text-white text-sm transition-colors"
-            >
-              {authCtaLabel}
-            </Link>
+            {isAuthLoading ? (
+              <span className="px-4 py-2 text-aetio-blue-300 text-sm">Checking session...</span>
+            ) : (
+              <Link
+                to={authCtaPath}
+                className="px-4 py-2 text-aetio-blue-200 hover:text-white text-sm transition-colors"
+              >
+                {authCtaLabel}
+              </Link>
+            )}
             <motion.a
               href="mailto:contactaetio@gmail.com?subject=Request%20Demo&body=Hi%2C%20I%27d%20like%20to%20request%20a%20demo%20of%20Aetio."
               whileHover={{ scale: 1.05 }}
@@ -55,12 +60,16 @@ export function Navigation() {
             className="md:hidden mt-4 pb-4 border-t border-aetio-blue-900 pt-4"
           >
             <div className="flex flex-col gap-2">
-              <Link
-                to={authCtaPath}
-                className="px-5 py-2 text-aetio-blue-200 hover:text-white text-sm transition-colors text-center"
-              >
-                {authCtaLabel}
-              </Link>
+              {isAuthLoading ? (
+                <span className="px-5 py-2 text-aetio-blue-300 text-sm text-center">Checking session...</span>
+              ) : (
+                <Link
+                  to={authCtaPath}
+                  className="px-5 py-2 text-aetio-blue-200 hover:text-white text-sm transition-colors text-center"
+                >
+                  {authCtaLabel}
+                </Link>
+              )}
               <a
                 href="mailto:contactaetio@gmail.com?subject=Request%20Demo&body=Hi%2C%20I%27d%20like%20to%20request%20a%20demo%20of%20Aetio."
                 className="px-5 py-2 bg-aetio-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-aetio-blue-700 transition-colors text-center"
