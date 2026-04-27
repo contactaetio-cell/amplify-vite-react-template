@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
@@ -16,6 +16,8 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Download,
+  ExternalLink,
   FileCheck,
   FileText,
   PenLine,
@@ -27,6 +29,7 @@ import {
 import { toast } from 'sonner';
 import type { Insight, InsightFamilyData, InsightFamilyDataRow, MetadataEntry } from './types';
 import { acceptInsights, fetchProjectInsights } from '../../api/insights';
+import { resolveStorageUrl } from '../../api/storage';
 
 type ReviewStatus = 'pending' | 'approved' | 'declined';
 const LOW_CONFIDENCE_THRESHOLD = 0.7;
@@ -37,6 +40,24 @@ type DisplayFamilyTableRow = {
   dimensions: Record<string, string>;
   metrics: Record<string, string>;
 };
+
+type ProjectFile = {
+  label: string;
+  url: string;
+  viewUrl?: string;
+  kind: 'Context' | 'Output' | 'Raw data';
+};
+
+function getFileNameFromUrl(url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+    const pathName = decodeURIComponent(parsedUrl.pathname);
+    const lastSegment = pathName.split('/').filter(Boolean).pop();
+    return lastSegment?.replace(/^[0-9a-f-]{36}-/i, '') || 'Input file';
+  } catch {
+    return url.split('/').filter(Boolean).pop() || 'Input file';
+  }
+}
 
 function getConfidenceScore(insight: Insight): number | null {
   const rawScore = insight.confidence?.score;
@@ -62,40 +83,6 @@ function toDisplayLabel(value: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
-}
-
-function getRowDimensionSummary(row: InsightFamilyDataRow, dimensions: string[]): string {
-  const rawFilterValues = Array.isArray(row.filter_values) ? row.filter_values : [];
-
-  const formatted = rawFilterValues
-    .map((entry, index) => {
-      if (entry === null || entry === undefined) return '';
-
-      let rawTag: unknown;
-      let rawValue: unknown;
-
-      if (typeof entry === 'object') {
-        const rawEntry = entry as Record<string, unknown>;
-        rawTag = rawEntry.tag ?? rawEntry.dimension ?? rawEntry.key ?? rawEntry.name;
-        rawValue =
-          rawEntry.value ??
-          rawEntry.dimension_value ??
-          rawEntry.filter_value ??
-          rawEntry.label ??
-          rawEntry.text;
-      } else {
-        rawValue = entry;
-      }
-
-      const fallbackTag = dimensions[index] ?? `dimension_${index + 1}`;
-      const tag = normalizeTextValue(rawTag) || fallbackTag;
-      const value = normalizeTextValue(rawValue);
-      if (!value) return '';
-      return `${toDisplayLabel(tag)}: ${value}`;
-    })
-    .filter(Boolean);
-
-  return formatted.length > 0 ? formatted.join(' | ') : 'All segments';
 }
 
 function getRowDimensionEntries(
@@ -360,7 +347,6 @@ function ProjectInsightReviewCard({
   const isLowConfidence =
     confidenceScore !== null && confidenceScore < LOW_CONFIDENCE_THRESHOLD;
   const confidenceReasoning = projectInsight.confidence?.reasoning?.trim();
-  const insightFamilyRows = insightFamilyData?.rows ?? [];
   const displayFamilyRows = insightFamilyData ? buildDisplayFamilyTableRows(insightFamilyData) : [];
   const visibleInsightFamilyRows = showAllFamilyRows
     ? displayFamilyRows
@@ -821,6 +807,27 @@ export function ApprovalReviewPanel({
   const [editDraft, setEditDraft] = useState<Insight | null>(null);
   const [activeDocFilter, setActiveDocFilter] = useState<string | null>(null);
   const [expandedInsightIds, setExpandedInsightIds] = useState<Set<string>>(new Set());
+  const projectFiles = useMemo<ProjectFile[]>(
+    () => [
+      ...(insight.context_urls ?? []).map((url) => ({
+        label: getFileNameFromUrl(url),
+        url,
+        kind: 'Context' as const,
+      })),
+      ...(insight.output_urls ?? []).map((url) => ({
+        label: getFileNameFromUrl(url),
+        url,
+        kind: 'Output' as const,
+      })),
+      ...(insight.raw_data_urls ?? []).map((url) => ({
+        label: getFileNameFromUrl(url),
+        url,
+        kind: 'Raw data' as const,
+      })),
+    ],
+    [insight.context_urls, insight.output_urls, insight.raw_data_urls]
+  );
+  const [selectedFileUrl, setSelectedFileUrl] = useState<string | null>(projectFiles[0]?.url ?? null);
   const aggregatedMetadataByTag = useMemo(
     () => aggregateInsightsMetadataByTag(projectInsights),
     [projectInsights]
@@ -969,7 +976,7 @@ export function ApprovalReviewPanel({
   const declinedInsightIds = projectInsights
     .filter((item) => reviewStatusForInsight(item) === 'declined')
     .map((item) => item.insight_id);
-  const sanitizeLoadedProjectInsights = (items: Insight[]): Insight[] => {
+  const sanitizeLoadedProjectInsights = useCallback((items: Insight[]): Insight[] => {
     const dedupedByInsightId = new Map<string, Insight>();
     for (const item of items) {
       if (!item?.insight_id) continue;
@@ -977,11 +984,11 @@ export function ApprovalReviewPanel({
       dedupedByInsightId.set(item.insight_id, item);
     }
     return Array.from(dedupedByInsightId.values());
-  };
-  const replaceProjectInsights = (nextInsights: Insight[]) => {
+  }, [insight.insight_id]);
+  const replaceProjectInsights = useCallback((nextInsights: Insight[]) => {
     projectInsightsRef.current = nextInsights;
     setProjectInsights(nextInsights);
-  };
+  }, []);
 
   useEffect(() => {
     if (lastInitializedInsightIdRef.current === insight.insight_id) return;
@@ -1038,7 +1045,13 @@ export function ApprovalReviewPanel({
     return () => {
       mounted = false;
     };
-  }, [insight.insight_id, insight.user_id]);
+  }, [
+    insight.insight_id,
+    insight.preloaded_project_insights,
+    insight.user_id,
+    replaceProjectInsights,
+    sanitizeLoadedProjectInsights,
+  ]);
 
   const toggleInsightExpanded = (id: string) => {
     setExpandedInsightIds((prev) => {
@@ -1249,6 +1262,31 @@ export function ApprovalReviewPanel({
     });
   }, [projectInsights]);
 
+  useEffect(() => {
+    setSelectedFileUrl((current) => {
+      if (current && projectFiles.some((file) => file.url === current)) return current;
+      return projectFiles[0]?.url ?? null;
+    });
+  }, [projectFiles]);
+
+  const selectedFile = projectFiles.find((file) => file.url === selectedFileUrl) ?? projectFiles[0] ?? null;
+
+  const openProjectFile = async (file: ProjectFile) => {
+    const url = await resolveStorageUrl(file.url);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const downloadProjectFile = async (file: ProjectFile) => {
+    const url = await resolveStorageUrl(file.url);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = file.label;
+    link.rel = 'noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -1303,6 +1341,62 @@ export function ApprovalReviewPanel({
           </div>
         </div>
       </Card>
+
+      {projectFiles.length > 0 ? (
+        <Card className="p-4 bg-white border-gray-200">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Input Files</p>
+              <p className="text-xs text-gray-500">{projectFiles.length} file{projectFiles.length === 1 ? '' : 's'}</p>
+            </div>
+            {selectedFile ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void downloadProjectFile(selectedFile)}
+                  className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <Download className="h-4 w-4" />
+                  Download
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openProjectFile(selectedFile)}
+                  className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <div>
+            <div className="space-y-2">
+              {projectFiles.map((file) => {
+                const isSelected = selectedFile?.url === file.url;
+                return (
+                  <button
+                    key={`${file.kind}-${file.url}`}
+                    type="button"
+                    onClick={() => setSelectedFileUrl(file.url)}
+                    className={`flex w-full items-start gap-3 rounded-md border p-3 text-left transition-colors ${
+                      isSelected
+                        ? 'border-blue-200 bg-blue-50 text-blue-900'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <FileText className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{file.label}</span>
+                      <span className="block text-xs text-gray-500">{file.kind}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       <Card className="p-6 space-y-4">
         <div>

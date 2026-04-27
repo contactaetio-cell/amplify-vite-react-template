@@ -27,3 +27,14 @@ export async function uploadExtractionFileToS3(user: string, files: File[]): Pro
 
   return uploads;
 }
+
+export async function resolveStorageUrl(location: string): Promise<string> {
+  if (!location.startsWith('s3://')) return location;
+
+  const withoutScheme = location.slice('s3://'.length);
+  const firstSlashIndex = withoutScheme.indexOf('/');
+  const rawPath = firstSlashIndex >= 0 ? withoutScheme.slice(firstSlashIndex + 1) : withoutScheme;
+  const path = decodeURIComponent(rawPath);
+  const { url } = await getUrl({ path });
+  return url.toString();
+}

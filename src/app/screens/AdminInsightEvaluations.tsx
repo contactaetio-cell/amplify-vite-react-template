@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchAdminInsightEvaluations,
-  type AdminInsightEvaluationBucket,
   type AdminProjectInsightEvaluationSummary,
   type AdminInsightEvaluationsResponse,
 } from '../api/insights';
@@ -16,7 +15,8 @@ import {
   TableHeader,
   TableRow,
 } from '../components/ui/table';
-import { Badge } from '../components/ui/badge';
+import { ApprovalReviewQueueTab } from './data-source-connection/ApprovalReviewQueueTab';
+import type { Insight } from './data-source-connection/types';
 
 function formatRate(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
@@ -30,41 +30,17 @@ function formatDecimal(value: number): string {
   return Number.isFinite(value) ? value.toFixed(2) : '0.00';
 }
 
-function BucketTable(props: { title: string; buckets: AdminInsightEvaluationBucket[] }) {
-  const { title, buckets } = props;
-  return (
-    <Card className="border-gray-200">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold text-gray-900">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {buckets.length === 0 ? (
-          <p className="text-sm text-gray-500">No data.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Key</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Acceptance</TableHead>
-                <TableHead className="text-right">Avg Score</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {buckets.slice(0, 8).map((bucket) => (
-                <TableRow key={`${title}-${bucket.key}`}>
-                  <TableCell className="max-w-[220px] truncate" title={bucket.key}>{bucket.key}</TableCell>
-                  <TableCell className="text-right">{formatNumber(bucket.total)}</TableCell>
-                  <TableCell className="text-right">{formatRate(bucket.acceptance_rate)}</TableCell>
-                  <TableCell className="text-right">{formatDecimal(bucket.avg_review_quality_score)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
-  );
+function toProjectQueueInsight(project: AdminProjectInsightEvaluationSummary): Insight {
+  return {
+    insight_id: project.project_id,
+    project_id: project.project_id,
+    user_id: '',
+    status: 'pending',
+    text: 'Project review',
+    evidence_snippet: 'Project review',
+    s3_node: `project:${project.project_id}`,
+    document_id: project.project_id,
+  };
 }
 
 export function AdminInsightEvaluations() {
@@ -73,7 +49,7 @@ export function AdminInsightEvaluations() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<AdminInsightEvaluationsResponse | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [expandedProjectId, setExpandedProjectId] = useState<string | undefined>(undefined);
 
   const loadData = useCallback(async (projectId?: string) => {
     setLoading(true);
@@ -84,30 +60,17 @@ export function AdminInsightEvaluations() {
         limit: 100,
       });
       setResponse(next);
-
-      const firstProjectId = next.projects[0]?.project_id;
-      if (!firstProjectId) {
-        setSelectedProjectId(null);
-      } else if (!selectedProjectId || !next.projects.some((project) => project.project_id === selectedProjectId)) {
-        setSelectedProjectId(firstProjectId);
-      }
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Failed to load insight evaluations.');
       setResponse(null);
-      setSelectedProjectId(null);
     } finally {
       setLoading(false);
     }
-  }, [selectedProjectId]);
+  }, []);
 
   useEffect(() => {
     void loadData(activeProjectIdFilter);
   }, [activeProjectIdFilter, loadData]);
-
-  const selectedProject = useMemo<AdminProjectInsightEvaluationSummary | null>(() => {
-    if (!response || !selectedProjectId) return null;
-    return response.projects.find((project) => project.project_id === selectedProjectId) ?? null;
-  }, [response, selectedProjectId]);
 
   const dashboardTotals = useMemo(() => {
     const projects = response?.projects ?? [];
@@ -142,6 +105,10 @@ export function AdminInsightEvaluations() {
   const handleReset = () => {
     setProjectIdInput('');
     setActiveProjectIdFilter(undefined);
+  };
+
+  const handleProjectClick = (projectId: string) => {
+    setExpandedProjectId((current) => (current === projectId ? undefined : projectId));
   };
 
   return (
@@ -244,23 +211,39 @@ export function AdminInsightEvaluations() {
                 </TableHeader>
                 <TableBody>
                   {(response?.projects ?? []).map((project) => {
-                    const isSelected = selectedProjectId === project.project_id;
+                    const isExpanded = expandedProjectId === project.project_id;
+                    const queueInsight = toProjectQueueInsight(project);
                     return (
-                      <TableRow
-                        key={project.project_id}
-                        className={isSelected ? 'bg-blue-50' : undefined}
-                        onClick={() => setSelectedProjectId(project.project_id)}
-                      >
-                        <TableCell className="max-w-[300px] cursor-pointer font-medium" title={project.project_id}>
-                          {project.project_id}
-                        </TableCell>
-                        <TableCell className="text-right">{formatNumber(project.extracted_insight_count)}</TableCell>
-                        <TableCell className="text-right">{formatNumber(project.reviewed_insight_count)}</TableCell>
-                        <TableCell className="text-right">{formatRate(project.acceptance_rate)}</TableCell>
-                        <TableCell className="text-right">{formatRate(project.decline_rate)}</TableCell>
-                        <TableCell className="text-right">{formatRate(project.deletion_rate)}</TableCell>
-                        <TableCell className="text-right">{formatDecimal(project.average_review_quality_score)}</TableCell>
-                      </TableRow>
+                      <Fragment key={project.project_id}>
+                        <TableRow
+                          className={isExpanded ? 'cursor-pointer bg-blue-50' : 'cursor-pointer'}
+                          onClick={() => handleProjectClick(project.project_id)}
+                        >
+                          <TableCell className="max-w-[300px] cursor-pointer font-medium" title={project.project_id}>
+                            {project.project_id}
+                          </TableCell>
+                          <TableCell className="text-right">{formatNumber(project.extracted_insight_count)}</TableCell>
+                          <TableCell className="text-right">{formatNumber(project.reviewed_insight_count)}</TableCell>
+                          <TableCell className="text-right">{formatRate(project.acceptance_rate)}</TableCell>
+                          <TableCell className="text-right">{formatRate(project.decline_rate)}</TableCell>
+                          <TableCell className="text-right">{formatRate(project.deletion_rate)}</TableCell>
+                          <TableCell className="text-right">{formatDecimal(project.average_review_quality_score)}</TableCell>
+                        </TableRow>
+                        {isExpanded ? (
+                          <TableRow className="bg-white hover:bg-white">
+                            <TableCell colSpan={7} className="whitespace-normal p-4">
+                              <ApprovalReviewQueueTab
+                                insights={[queueInsight]}
+                                selectedInsightId={project.project_id}
+                                onSelectInsight={setExpandedProjectId}
+                                onBackToQueue={() => setExpandedProjectId(undefined)}
+                                onQueueMutation={() => loadData(activeProjectIdFilter)}
+                                onDeleteInsight={() => setExpandedProjectId(undefined)}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ) : null}
+                      </Fragment>
                     );
                   })}
                 </TableBody>
@@ -269,98 +252,6 @@ export function AdminInsightEvaluations() {
           </CardContent>
         </Card>
 
-        {selectedProject ? (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-xl font-semibold text-gray-900">Project Details</h3>
-              <Badge variant="outline" className="text-xs">{selectedProject.project_id}</Badge>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-              <Card className="border-gray-200"><CardHeader className="pb-2"><CardDescription>Accepted Unchanged</CardDescription></CardHeader><CardContent><p className="text-xl font-semibold text-emerald-700">{formatNumber(selectedProject.accepted_unchanged_count)}</p></CardContent></Card>
-              <Card className="border-gray-200"><CardHeader className="pb-2"><CardDescription>Accepted Small Edit</CardDescription></CardHeader><CardContent><p className="text-xl font-semibold text-blue-700">{formatNumber(selectedProject.accepted_small_edit_count)}</p></CardContent></Card>
-              <Card className="border-gray-200"><CardHeader className="pb-2"><CardDescription>Accepted Major Edit</CardDescription></CardHeader><CardContent><p className="text-xl font-semibold text-indigo-700">{formatNumber(selectedProject.accepted_major_edit_count)}</p></CardContent></Card>
-              <Card className="border-gray-200"><CardHeader className="pb-2"><CardDescription>Avg Text Edit Distance</CardDescription></CardHeader><CardContent><p className="text-xl font-semibold text-gray-900">{formatDecimal(selectedProject.average_text_edit_distance)}</p></CardContent></Card>
-              <Card className="border-gray-200"><CardHeader className="pb-2"><CardDescription>Avg Metadata Delta</CardDescription></CardHeader><CardContent><p className="text-xl font-semibold text-gray-900">{formatDecimal(selectedProject.average_metadata_delta)}</p></CardContent></Card>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-              <BucketTable title="Pipeline Version" buckets={selectedProject.pipeline_version_breakdown} />
-              <BucketTable title="Model" buckets={selectedProject.model_breakdown} />
-              <BucketTable title="Prompt Version" buckets={selectedProject.prompt_version_breakdown} />
-              <BucketTable title="Extraction Mode" buckets={selectedProject.extraction_mode_breakdown} />
-              <BucketTable title="Source Mode" buckets={selectedProject.source_mode_breakdown} />
-
-              <Card className="border-gray-200">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold text-gray-900">Most Corrected Dimensions</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {selectedProject.common_corrected_dimensions.length === 0 ? (
-                    <p className="text-sm text-gray-500">No dimension corrections captured.</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {selectedProject.common_corrected_dimensions.map((item) => (
-                        <Badge key={`${item.dimension}-${item.count}`} variant="outline">
-                          {item.dimension} ({item.count})
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card className="border-gray-200">
-              <CardHeader>
-                <CardTitle className="text-sm font-semibold text-gray-900">Recent Terminal Review Events</CardTitle>
-                <CardDescription>
-                  Latest accepted/declined/deleted events across reviewed insights.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {selectedProject.recent_terminal_events.length === 0 ? (
-                  <p className="text-sm text-gray-500">No terminal review events yet.</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Time</TableHead>
-                        <TableHead>Insight</TableHead>
-                        <TableHead>Event</TableHead>
-                        <TableHead>Outcome</TableHead>
-                        <TableHead className="text-right">Score</TableHead>
-                        <TableHead className="text-right">Metadata Δ</TableHead>
-                        <TableHead className="text-right">Meta +</TableHead>
-                        <TableHead className="text-right">Meta -</TableHead>
-                        <TableHead className="text-right">Meta ~</TableHead>
-                        <TableHead>Pipeline</TableHead>
-                        <TableHead>Model</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedProject.recent_terminal_events.map((event) => (
-                        <TableRow key={`${event.insight_id}-${event.occurred_at}`}>
-                          <TableCell>{event.occurred_at ? new Date(event.occurred_at).toLocaleString() : '-'}</TableCell>
-                          <TableCell className="max-w-[220px] truncate" title={event.insight_id}>{event.insight_id}</TableCell>
-                          <TableCell>{event.event_type}</TableCell>
-                          <TableCell>{event.outcome}</TableCell>
-                          <TableCell className="text-right">{formatDecimal(event.review_quality_score)}</TableCell>
-                          <TableCell className="text-right">{formatNumber(event.metadata_delta_count)}</TableCell>
-                          <TableCell className="text-right">{formatNumber(event.metadata_added_count)}</TableCell>
-                          <TableCell className="text-right">{formatNumber(event.metadata_removed_count)}</TableCell>
-                          <TableCell className="text-right">{formatNumber(event.metadata_edited_count)}</TableCell>
-                          <TableCell className="max-w-[180px] truncate" title={event.pipeline_version}>{event.pipeline_version}</TableCell>
-                          <TableCell className="max-w-[180px] truncate" title={event.model_name}>{event.model_name}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        ) : null}
       </div>
     </div>
   );
