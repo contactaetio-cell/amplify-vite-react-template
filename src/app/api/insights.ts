@@ -30,6 +30,8 @@ export type ProjectRecord = {
   raw_data_urls?: string[];
   created_at?: string;
   updated_at?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type ProjectApprovalBundle = {
@@ -38,8 +40,72 @@ export type ProjectApprovalBundle = {
   insightfamilydata: InsightFamilyData[];
 };
 
+export type AdminInsightEvaluationBucket = {
+  key: string;
+  total: number;
+  accepted: number;
+  declined: number;
+  deleted: number;
+  acceptance_rate: number;
+  decline_rate: number;
+  deletion_rate: number;
+  avg_review_quality_score: number;
+};
+
+export type AdminRecentTerminalEvent = {
+  occurred_at: string;
+  insight_id: string;
+  event_type: string;
+  outcome: string;
+  review_quality_score: number;
+  pipeline_version: string;
+  extraction_mode: string;
+  model_name: string;
+  prompt_version: string;
+  source_mode: string;
+  metadata_delta_count: number;
+  metadata_added_count: number;
+  metadata_removed_count: number;
+  metadata_edited_count: number;
+};
+
+export type AdminProjectInsightEvaluationSummary = {
+  project_id: string;
+  extracted_insight_count: number;
+  reviewed_insight_count: number;
+  total_review_events: number;
+  total_terminal_events: number;
+  accepted_count: number;
+  accepted_after_edit_count: number;
+  declined_count: number;
+  deleted_count: number;
+  accepted_unchanged_count: number;
+  accepted_small_edit_count: number;
+  accepted_major_edit_count: number;
+  acceptance_rate: number;
+  unchanged_acceptance_rate: number;
+  decline_rate: number;
+  deletion_rate: number;
+  average_review_quality_score: number;
+  average_text_edit_distance: number;
+  average_metadata_delta: number;
+  average_row_delta: number;
+  pipeline_version_breakdown: AdminInsightEvaluationBucket[];
+  extraction_mode_breakdown: AdminInsightEvaluationBucket[];
+  model_breakdown: AdminInsightEvaluationBucket[];
+  prompt_version_breakdown: AdminInsightEvaluationBucket[];
+  source_mode_breakdown: AdminInsightEvaluationBucket[];
+  common_corrected_dimensions: Array<{ dimension: string; count: number }>;
+  recent_terminal_events: AdminRecentTerminalEvent[];
+};
+
+export type AdminInsightEvaluationsResponse = {
+  fetched_at: string;
+  total_projects: number;
+  projects: AdminProjectInsightEvaluationSummary[];
+};
+
 type InsightDetailResponse = {
-  insight: Insight;
   siblings: Insight[];
   data: InsightFamilyData | null;
 };
@@ -207,7 +273,16 @@ export type GenerateInsightsPayload = {
     email_address?: string;
   };
   uploadMode: "document" | "manual";
-  researchContext: string;
+  researchContext?: string;
+  researchObjective?: string;
+  methodology?: string;
+  additionalContext?: string;
+  analysisStartDate?: string;
+  analysisEndDate?: string;
+  owner?: string;
+  relatedProjects?: string;
+  approvalStatus?: "pending" | "approved_pr" | "approved_legal" | "approved_both" | "not_required";
+  sharingScope?: "internal_restricted" | "internal_all" | "external_restricted" | "public";
   contextUrls: string[];
   outputUrls: string[];
   rawDataUrls: string[];
@@ -266,9 +341,91 @@ function logInsightsError(functionName: string, message: string, details?: unkno
   console.error(`[insights-api] ${functionName}: ${message}`, details);
 }
 
+type InsightStatusCounts = {
+  total: number;
+  accepted: number;
+  declined: number;
+  rejected: number;
+  pending: number;
+  missing: number;
+  other: number;
+};
+
+function normalizeInsightStatusValue(status: unknown): string {
+  if (typeof status !== 'string') return '';
+  return status.trim().toLowerCase();
+}
+
+function countInsightStatusesForPayload(insights: Insight[]): InsightStatusCounts {
+  const counts: InsightStatusCounts = {
+    total: 0,
+    accepted: 0,
+    declined: 0,
+    rejected: 0,
+    pending: 0,
+    missing: 0,
+    other: 0,
+  };
+
+  for (const insight of insights) {
+    const normalized = normalizeInsightStatusValue(insight.status);
+    counts.total += 1;
+
+    if (!normalized) {
+      counts.missing += 1;
+      continue;
+    }
+
+    if (normalized === 'accepted' || normalized === 'approved') {
+      counts.accepted += 1;
+      continue;
+    }
+
+    if (normalized === 'declined') {
+      counts.declined += 1;
+      continue;
+    }
+
+    if (normalized === 'rejected') {
+      counts.rejected += 1;
+      continue;
+    }
+
+    if (normalized === 'pending') {
+      counts.pending += 1;
+      continue;
+    }
+
+    counts.other += 1;
+  }
+
+  return counts;
+}
+
 function castInsights(items: unknown[]): Insight[] {
   logInsightsDebug('castInsights', 'Casting items to Insight[]', { count: items.length });
   return items as Insight[];
+}
+
+function normalizeProjectRecordTimestamps(project: ProjectRecord): ProjectRecord {
+  const createdAt =
+    typeof project.createdAt === 'string'
+      ? project.createdAt
+      : typeof project.created_at === 'string'
+      ? project.created_at
+      : undefined;
+  const updatedAt =
+    typeof project.updatedAt === 'string'
+      ? project.updatedAt
+      : typeof project.updated_at === 'string'
+      ? project.updated_at
+      : undefined;
+
+  return {
+    ...project,
+    ...(createdAt ? { created_at: project.created_at ?? createdAt, createdAt } : {}),
+    ...(updatedAt ? { updated_at: project.updated_at ?? updatedAt, updatedAt } : {}),
+  };
 }
 
 async function fetchInsightsByFilters(params: Record<string, string>): Promise<Insight[]> {
@@ -443,7 +600,7 @@ async function fetchProjectsByStatus(status: string): Promise<ProjectRecord[]> {
     Array.isArray((parsed as { items?: unknown[] }).items)
       ? ((parsed as { items: unknown[] }).items as ProjectRecord[])
       : [];
-  return items;
+  return items.map((project) => normalizeProjectRecordTimestamps(project));
 }
 
 export async function fetchProjectApprovalBundle(projectId: string): Promise<ProjectApprovalBundle> {
@@ -477,9 +634,60 @@ export async function fetchProjectApprovalBundle(projectId: string): Promise<Pro
   }
 
   return {
-    project: bundle.project,
+    project: normalizeProjectRecordTimestamps(bundle.project),
     insights: Array.isArray(bundle.insights) ? bundle.insights : [],
     insightfamilydata: Array.isArray(bundle.insightfamilydata) ? bundle.insightfamilydata : [],
+  };
+}
+
+export async function fetchAdminInsightEvaluations(
+  options?: { projectId?: string; limit?: number },
+): Promise<AdminInsightEvaluationsResponse> {
+  logInsightsDebug('fetchAdminInsightEvaluations', 'Started', options);
+  const url = new URL('/admin/insight-evaluations', BACKEND_SEARCH_URL);
+  if (options?.projectId) {
+    url.searchParams.set('project_id', options.projectId);
+  }
+  if (typeof options?.limit === 'number' && Number.isFinite(options.limit)) {
+    url.searchParams.set('limit', String(Math.max(1, Math.floor(options.limit))));
+  }
+
+  const headers = await buildAuthHeaders({});
+  const response = await fetch(url.toString(), { method: 'GET', headers });
+  const text = await response.text();
+
+  if (!response.ok) {
+    logInsightsError('fetchAdminInsightEvaluations', 'Backend returned error response', {
+      status: response.status,
+      responsePreview: text.slice(0, 300),
+    });
+    throw new Error(`Failed to fetch admin insight evaluations: ${response.status} ${text}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error('Invalid admin insight evaluations response');
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Invalid admin insight evaluations response');
+  }
+
+  const responseData = parsed as Partial<AdminInsightEvaluationsResponse>;
+  if (
+    typeof responseData.fetched_at !== 'string'
+    || typeof responseData.total_projects !== 'number'
+    || !Array.isArray(responseData.projects)
+  ) {
+    throw new Error('Invalid admin insight evaluations response');
+  }
+
+  return {
+    fetched_at: responseData.fetched_at,
+    total_projects: responseData.total_projects,
+    projects: responseData.projects as AdminProjectInsightEvaluationSummary[],
   };
 }
 
@@ -549,14 +757,8 @@ export async function fetchInsightById(
   }
 
   const parsed = data as Partial<InsightDetailResponse>;
-  if (!parsed.insight || typeof parsed.insight !== "object" || Array.isArray(parsed.insight)) {
-    logInsightsError('fetchInsightById', 'Invalid insight envelope in response', { parsed });
-    throw new Error("Invalid insight response");
-  }
-
   logInsightsDebug('fetchInsightById', 'Completed successfully', { insightId });
   return {
-    insight: parsed.insight as Insight,
     siblings: Array.isArray(parsed.siblings) ? castInsights(parsed.siblings) : [],
     data: (parsed.data ?? null) as InsightFamilyData | null,
   };
@@ -736,9 +938,11 @@ export async function updateInsightFamilyDataById(
 }
 
 export async function acceptInsights(projectId: string, insights: Insight[]): Promise<void> {
+  const payloadStatusCounts = countInsightStatusesForPayload(insights);
   logInsightsDebug('acceptInsights', 'Started', {
     projectId,
     insightCount: insights.length,
+    payloadStatusCounts,
   });
   const url = new URL(`/insights/accept/${encodeURIComponent(projectId)}`, BACKEND_URL);
   const headers: Record<string, string> = {
@@ -750,6 +954,7 @@ export async function acceptInsights(projectId: string, insights: Insight[]): Pr
   logInsightsDebug('acceptInsights', 'Sending streaming PATCH request', {
     url: url.toString(),
     insightCount: insights.length,
+    payloadStatusCounts,
   });
   let response: Response;
   try {
@@ -768,6 +973,7 @@ export async function acceptInsights(projectId: string, insights: Insight[]): Pr
   logInsightsDebug('acceptInsights', 'Received response', {
     status: response.status,
     ok: response.ok,
+    payloadStatusCounts,
   });
 
   if (!response.ok) {

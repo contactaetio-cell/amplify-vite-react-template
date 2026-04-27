@@ -1,0 +1,16 @@
+import { chromium } from 'playwright';
+const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5001';
+const USERNAME = process.env.E2E_USERNAME;
+const PASSWORD = process.env.E2E_PASSWORD;
+const browser = await chromium.launch({ headless: true });
+const page = await (await browser.newContext()).newPage();
+await page.goto(new URL('/login', BASE_URL).toString(), { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.waitForTimeout(1500);
+const beforeAlerts = await page.locator('[role="alert"], .amplify-text--error, .amplify-alert__body').allTextContents().catch(() => []);
+await page.getByLabel(/email/i).first().fill(USERNAME);
+await page.getByLabel(/password/i).first().fill(PASSWORD);
+await page.getByRole('button', { name: /sign in/i }).first().click();
+await page.waitForTimeout(2500);
+const afterAlerts = await page.locator('[role="alert"], .amplify-text--error, .amplify-alert__body').allTextContents().catch(() => []);
+console.log(JSON.stringify({ beforeAlerts, afterAlerts, url: page.url() }, null, 2));
+await browser.close();

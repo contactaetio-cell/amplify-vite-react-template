@@ -14,6 +14,7 @@ import { TopInsights } from './screens/TopInsights';
 import { SearchResults } from './screens/SearchResults';
 import { InsightsList } from './screens/InsightsList';
 import { Settings } from './screens/Settings';
+import { AdminInsightEvaluations } from './screens/AdminInsightEvaluations';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
 import { parseSearchSource } from './search/sourceOptions';
@@ -35,7 +36,8 @@ type Screen =
   | 'top-insights'
   | 'search'
   | 'help'
-  | 'settings';
+  | 'settings'
+  | 'admin-evals';
 
 export default function App() {
   const navigate = useNavigate();
@@ -81,7 +83,8 @@ export default function App() {
       'top-insights',
       'search',
       'help',
-      'settings'
+      'settings',
+      'admin-evals'
     ];
 
     if (screen && knownScreens.includes(screen as Screen)) {
@@ -215,6 +218,9 @@ export default function App() {
       
       case 'settings':
         return <Settings />;
+
+      case 'admin-evals':
+        return <AdminInsightEvaluations />;
       
       default:
         return <Home onNavigate={handleNavigate} onViewInsight={handleViewInsight} />;

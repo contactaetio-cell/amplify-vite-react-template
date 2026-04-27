@@ -63,6 +63,8 @@ export interface InsightSubInsight {
   top_level_group_id?: string;
 }
 
+export type InsightTagEntry = string | Record<string, unknown>;
+
 export interface Insight {
   insight_id: string;
   parent_insight_id?: string | null;
@@ -88,6 +90,7 @@ export interface Insight {
   supporting_chunks?: SupportingChunk[];
   findings?: FindingRef[];
   sub_insights?: InsightSubInsight[];
+  tags?: InsightTagEntry[];
 
   metadata?: MetadataEntry[];
   confidence?: InsightConfidence;

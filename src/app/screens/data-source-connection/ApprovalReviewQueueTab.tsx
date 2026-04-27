@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../components/ui/badge';
 import { Card } from '../../components/ui/card';
 import { ChevronRight, Clock, FileText, Sparkles, BookOpen } from 'lucide-react';
@@ -33,8 +33,13 @@ export function ApprovalReviewQueueTab({
   const selectedInsightFromQueue = selectedInsightId
     ? insights.find((item) => item.insight_id === selectedInsightId) ?? null
     : null;
+  const selectedInsightFromQueueRef = useRef<Insight | null>(selectedInsightFromQueue);
   const [selectedInsight, setSelectedInsight] = useState<Insight | null>(null);
   const [isLoadingSelected, setIsLoadingSelected] = useState(false);
+
+  useEffect(() => {
+    selectedInsightFromQueueRef.current = selectedInsightFromQueue;
+  }, [selectedInsightFromQueue]);
 
   useEffect(() => {
     let mounted = true;
@@ -59,8 +64,8 @@ export function ApprovalReviewQueueTab({
           evidence_snippet: project.research_context?.trim() || 'Pending project review',
           s3_node: `project:${project.project_id}`,
           document_id: project.project_id,
-          createdAt: project.created_at,
-          updatedAt: project.updated_at,
+          createdAt: project.createdAt ?? project.created_at,
+          updatedAt: project.updatedAt ?? project.updated_at,
           upload_mode: project.upload_mode,
           context_urls: project.context_urls ?? [],
           output_urls: project.output_urls ?? [],
@@ -73,7 +78,9 @@ export function ApprovalReviewQueueTab({
         if (mounted) setSelectedInsight(hydratedInsight);
       } catch (error) {
         console.error('Failed to load selected project bundle', error);
-        if (mounted) setSelectedInsight(selectedInsightFromQueue);
+        if (mounted) {
+          setSelectedInsight((prev) => prev ?? selectedInsightFromQueueRef.current);
+        }
       } finally {
         if (mounted) setIsLoadingSelected(false);
       }
@@ -84,7 +91,7 @@ export function ApprovalReviewQueueTab({
     return () => {
       mounted = false;
     };
-  }, [selectedInsightFromQueue, selectedInsightId]);
+  }, [selectedInsightId]);
 
   return (
     <div className="max-w-7xl mx-auto">

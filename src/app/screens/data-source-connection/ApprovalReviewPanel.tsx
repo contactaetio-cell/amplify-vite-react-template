@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
@@ -25,11 +25,18 @@ import {
   XCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Insight, InsightFamilyData, MetadataEntry } from './types';
+import type { Insight, InsightFamilyData, InsightFamilyDataRow, MetadataEntry } from './types';
 import { acceptInsights, fetchProjectInsights } from '../../api/insights';
 
 type ReviewStatus = 'pending' | 'approved' | 'declined';
 const LOW_CONFIDENCE_THRESHOLD = 0.7;
+const INSIGHT_FAMILY_ROW_PREVIEW_LIMIT = 5;
+
+type DisplayFamilyTableRow = {
+  rowKey: string;
+  dimensions: Record<string, string>;
+  metrics: Record<string, string>;
+};
 
 function getConfidenceScore(insight: Insight): number | null {
   const rawScore = insight.confidence?.score;
@@ -47,6 +54,116 @@ function normalizeTextValue(value: unknown): string {
       .join(', ');
   }
   return '';
+}
+
+function toDisplayLabel(value: string): string {
+  return value
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function getRowDimensionSummary(row: InsightFamilyDataRow, dimensions: string[]): string {
+  const rawFilterValues = Array.isArray(row.filter_values) ? row.filter_values : [];
+
+  const formatted = rawFilterValues
+    .map((entry, index) => {
+      if (entry === null || entry === undefined) return '';
+
+      let rawTag: unknown;
+      let rawValue: unknown;
+
+      if (typeof entry === 'object') {
+        const rawEntry = entry as Record<string, unknown>;
+        rawTag = rawEntry.tag ?? rawEntry.dimension ?? rawEntry.key ?? rawEntry.name;
+        rawValue =
+          rawEntry.value ??
+          rawEntry.dimension_value ??
+          rawEntry.filter_value ??
+          rawEntry.label ??
+          rawEntry.text;
+      } else {
+        rawValue = entry;
+      }
+
+      const fallbackTag = dimensions[index] ?? `dimension_${index + 1}`;
+      const tag = normalizeTextValue(rawTag) || fallbackTag;
+      const value = normalizeTextValue(rawValue);
+      if (!value) return '';
+      return `${toDisplayLabel(tag)}: ${value}`;
+    })
+    .filter(Boolean);
+
+  return formatted.length > 0 ? formatted.join(' | ') : 'All segments';
+}
+
+function getRowDimensionEntries(
+  row: InsightFamilyDataRow,
+  dimensions: string[],
+): Array<{ name: string; value: string }> {
+  const rawFilterValues = Array.isArray(row.filter_values) ? row.filter_values : [];
+
+  return rawFilterValues
+    .map((entry, index) => {
+      const rawEntry = entry as Record<string, unknown>;
+      const name = normalizeTextValue(
+        rawEntry?.tag ?? rawEntry?.dimension_name ?? rawEntry?.dimension ?? rawEntry?.key ?? rawEntry?.name,
+      ) || dimensions[index] || `dimension_${index + 1}`;
+      const value = normalizeTextValue(
+        rawEntry?.display_value ??
+          rawEntry?.value ??
+          rawEntry?.dimension_value ??
+          rawEntry?.filter_value ??
+          rawEntry?.label ??
+          rawEntry?.text,
+      );
+      return name && value ? { name, value } : null;
+    })
+    .filter((entry): entry is { name: string; value: string } => Boolean(entry));
+}
+
+function formatMetricCell(
+  row: InsightFamilyDataRow,
+  metricColumn: string,
+  allMetricColumns: string[],
+): string {
+  const normalizedMetricName = row.metric_name?.trim().toLowerCase();
+  const normalizedColumn = metricColumn.trim().toLowerCase();
+  const isSingleMetric = allMetricColumns.length === 1;
+  const matchesMetric = normalizedMetricName === normalizedColumn;
+  if (!isSingleMetric && !matchesMetric) return '—';
+
+  if (row.metric_value !== undefined && row.metric_value !== null) {
+    const metricValue = String(row.metric_value);
+    return row.metric_unit ? `${metricValue} ${row.metric_unit}` : metricValue;
+  }
+
+  return row.value_text?.trim() || '—';
+}
+
+function buildDisplayFamilyTableRows(data: InsightFamilyData): DisplayFamilyTableRow[] {
+  const dimensions = data.dimensions ?? [];
+  const metricColumns = data.metric_columns ?? [];
+  const groupedRows = new Map<string, DisplayFamilyTableRow>();
+
+  for (const row of data.rows ?? []) {
+    const dimensionEntries = getRowDimensionEntries(row, dimensions);
+    const rowKey = dimensionEntries
+      .map((entry) => `${entry.name}:${entry.value}`)
+      .join('|') || row.row_id;
+    const current = groupedRows.get(rowKey) ?? {
+      rowKey,
+      dimensions: Object.fromEntries(dimensionEntries.map((entry) => [entry.name, entry.value])),
+      metrics: {},
+    };
+
+    const metricName = row.metric_name || metricColumns[0] || 'Value';
+    current.metrics[metricName] = formatMetricCell(row, metricName, [metricName]);
+    groupedRows.set(rowKey, current);
+  }
+
+  return Array.from(groupedRows.values());
 }
 
 function aggregateInsightsMetadataByTag(insights: Insight[]): Map<string, { tag: string; values: string[] }> {
@@ -204,6 +321,7 @@ function ProjectInsightReviewCard({
   getInsightFamilyDataForInsight: (item: Insight) => InsightFamilyData | null;
   formatDisplayDate: (value: string) => string;
 }) {
+  const [showAllFamilyRows, setShowAllFamilyRows] = useState(false);
   const isDeclined = reviewStatus === 'declined';
   const isApproved = reviewStatus === 'approved';
   const team = getMetadataValue(projectInsight, 'team', 'Strategy');
@@ -214,12 +332,43 @@ function ProjectInsightReviewCard({
   const expiration = getMetadataValue(projectInsight, 'expiration', '');
   const customFields = getCustomFields(projectInsight);
   const draftCustomFields = getCustomFields(draft);
+  const insightTags = Array.isArray(projectInsight.tags)
+    ? projectInsight.tags
+        .flatMap((tagEntry) => {
+          if (typeof tagEntry === 'string') {
+            const normalized = tagEntry.trim();
+            return normalized ? [normalized] : [];
+          }
+
+          if (tagEntry && typeof tagEntry === 'object' && !Array.isArray(tagEntry)) {
+            return Object.entries(tagEntry)
+              .map(([key, value]) => {
+                const normalizedValue = normalizeTextValue(value);
+                if (!normalizedValue) return '';
+                return `${toDisplayLabel(key)}: ${normalizedValue}`;
+              })
+              .filter(Boolean);
+          }
+
+          return [];
+        })
+        .filter(Boolean)
+    : [];
   const confidenceScore = getConfidenceScore(projectInsight);
   const insightFamilyData = getInsightFamilyDataForInsight(projectInsight);
   const confidencePercent = confidenceScore !== null ? Math.round(confidenceScore * 100) : null;
   const isLowConfidence =
     confidenceScore !== null && confidenceScore < LOW_CONFIDENCE_THRESHOLD;
   const confidenceReasoning = projectInsight.confidence?.reasoning?.trim();
+  const insightFamilyRows = insightFamilyData?.rows ?? [];
+  const displayFamilyRows = insightFamilyData ? buildDisplayFamilyTableRows(insightFamilyData) : [];
+  const visibleInsightFamilyRows = showAllFamilyRows
+    ? displayFamilyRows
+    : displayFamilyRows.slice(0, INSIGHT_FAMILY_ROW_PREVIEW_LIMIT);
+  const hiddenInsightFamilyRowCount = Math.max(
+    displayFamilyRows.length - visibleInsightFamilyRows.length,
+    0
+  );
   const filteredCollapsedMetadata = (projectInsight.metadata ?? []).filter((entry) => {
     const normalizedTag = entry.tag.toLowerCase();
     return (
@@ -410,26 +559,76 @@ function ProjectInsightReviewCard({
                     </Badge>
                   )}
                 </div>
-                {(insightFamilyData.rows ?? []).length > 0 && (
-                  <div className="space-y-1.5">
-                    {(insightFamilyData.rows ?? []).slice(0, 5).map((row) => (
-                      <div key={row.row_id} className="text-xs text-gray-700 rounded bg-white border border-blue-100 px-2 py-1.5">
-                        <span className="font-medium">
-                          {row.filter_values?.map((entry) => `${entry.tag}: ${entry.value}`).join(' | ') || 'All segments'}
-                        </span>
-                        <span className="text-gray-500">{' -> '}</span>
-                        <span>{row.metric_name ? `${row.metric_name}: ` : ''}{row.value_text}</span>
-                      </div>
+                {displayFamilyRows.length > 0 && (
+                  <div className="overflow-x-auto rounded-md border border-blue-100 bg-white">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className="bg-blue-50 text-gray-600">
+                        <tr>
+                          {(insightFamilyData.dimensions ?? []).map((dimension) => (
+                            <th key={`dimension-${dimension}`} className="px-2 py-1.5 font-medium">
+                              {toDisplayLabel(dimension)}
+                            </th>
+                          ))}
+                          {(insightFamilyData.metric_columns ?? []).map((metricColumn) => (
+                            <th key={`metric-${metricColumn}`} className="px-2 py-1.5 font-medium">
+                              {toDisplayLabel(metricColumn)}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                    {visibleInsightFamilyRows.map((row) => (
+                      <tr key={row.rowKey} className="border-t border-blue-50 text-gray-700">
+                        {(insightFamilyData.dimensions ?? []).map((dimension) => (
+                          <td key={`${row.rowKey}-dimension-${dimension}`} className="px-2 py-1.5 whitespace-nowrap">
+                            {row.dimensions[dimension] ?? '—'}
+                          </td>
+                        ))}
+                        {(insightFamilyData.metric_columns ?? []).map((metricColumn) => (
+                          <td key={`${row.rowKey}-metric-${metricColumn}`} className="px-2 py-1.5 whitespace-nowrap">
+                            {row.metrics[metricColumn] ?? '—'}
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                    {(insightFamilyData.rows ?? []).length > 5 && (
-                      <p className="text-[11px] text-gray-500">
-                        Showing 5 of {(insightFamilyData.rows ?? []).length} rows
-                      </p>
+                      </tbody>
+                    </table>
+                    {displayFamilyRows.length > INSIGHT_FAMILY_ROW_PREVIEW_LIMIT && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowAllFamilyRows((current) => !current)}
+                        className="h-7 px-2 text-[11px] text-blue-700 hover:text-blue-900 hover:bg-blue-100"
+                      >
+                        {showAllFamilyRows
+                          ? 'Show fewer rows'
+                          : `Show all ${displayFamilyRows.length} rows (${hiddenInsightFamilyRowCount} hidden)`}
+                      </Button>
                     )}
                   </div>
                 )}
               </div>
             )}
+
+            <div>
+              <Label className="text-xs text-gray-500 mb-1.5 block">Tags</Label>
+              {insightTags.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {insightTags.map((tag) => (
+                    <Badge
+                      key={`${projectInsight.insight_id}-tag-${tag}`}
+                      variant="secondary"
+                      className="text-[10px] font-normal"
+                    >
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 italic">No tags</p>
+              )}
+            </div>
 
             <div>
               <Label className="text-xs text-gray-500 mb-1.5 block">Source Type</Label>
@@ -613,6 +812,9 @@ export function ApprovalReviewPanel({
   const [statement, setStatement] = useState(insight.text);
   const [projectMetadata, setProjectMetadata] = useState<MetadataEntry[]>(insight.metadata ?? []);
   const [projectInsights, setProjectInsights] = useState<Insight[]>([]);
+  const projectInsightsRef = useRef<Insight[]>([]);
+  const reviewStatusOverridesRef = useRef<Map<string, ReviewStatus>>(new Map());
+  const lastInitializedInsightIdRef = useRef<string>('');
   const [isApproving, setIsApproving] = useState(false);
   const [isDeclining, setIsDeclining] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -634,10 +836,17 @@ export function ApprovalReviewPanel({
   const setReviewStatusForInsight = (
     item: Insight,
     nextStatus: 'pending' | 'approved' | 'declined'
-  ): Insight => ({
-    ...item,
-    status: nextStatus === 'approved' ? 'Approved' : nextStatus === 'declined' ? 'Declined' : 'Pending'
-  });
+  ): Insight => {
+    console.log('[approval-review] setReviewStatusForInsight', {
+      insightId: item.insight_id,
+      previousStatus: item.status,
+      nextStatus,
+    });
+    return {
+      ...item,
+      status: nextStatus === 'approved' ? 'Approved' : nextStatus === 'declined' ? 'Declined' : 'Pending'
+    };
+  };
 
   const getMetadataValue = (item: Insight, tag: string, fallback = ''): string =>
     item.metadata?.find((entry) => entry.tag.toLowerCase() === tag)?.value ?? fallback;
@@ -756,25 +965,52 @@ export function ApprovalReviewPanel({
     .filter(({ entry }) => entry.tag.toLowerCase() !== 'team');
   const queueId = insight.document_id || insight.insight_id;
   const status = insight.status ?? 'pending';
+  const projectCreatedAt = insight.createdAt;
+  const declinedInsightIds = projectInsights
+    .filter((item) => reviewStatusForInsight(item) === 'declined')
+    .map((item) => item.insight_id);
+  const sanitizeLoadedProjectInsights = (items: Insight[]): Insight[] => {
+    const dedupedByInsightId = new Map<string, Insight>();
+    for (const item of items) {
+      if (!item?.insight_id) continue;
+      if (item.insight_id === insight.insight_id) continue;
+      dedupedByInsightId.set(item.insight_id, item);
+    }
+    return Array.from(dedupedByInsightId.values());
+  };
+  const replaceProjectInsights = (nextInsights: Insight[]) => {
+    projectInsightsRef.current = nextInsights;
+    setProjectInsights(nextInsights);
+  };
 
   useEffect(() => {
+    if (lastInitializedInsightIdRef.current === insight.insight_id) return;
+    lastInitializedInsightIdRef.current = insight.insight_id;
     setStatement(insight.text);
     setProjectMetadata(insight.metadata ?? []);
+    reviewStatusOverridesRef.current = new Map();
   }, [insight.insight_id, insight.metadata, insight.text]);
+
+  useEffect(() => {
+    console.log('[approval-review] declined insightIds', {
+      projectId: insight.insight_id,
+      declinedInsightIds,
+    });
+  }, [declinedInsightIds, insight.insight_id]);
 
   useEffect(() => {
     let mounted = true;
 
     async function loadProjectInsights() {
       if (!insight.user_id || !insight.insight_id) {
-        if (mounted) setProjectInsights([]);
+        if (mounted) replaceProjectInsights([]);
         return;
       }
 
       const preloadedInsightsRaw = insight.preloaded_project_insights;
       if (Array.isArray(preloadedInsightsRaw) && preloadedInsightsRaw.length > 0) {
         if (mounted) {
-          setProjectInsights(
+          replaceProjectInsights(sanitizeLoadedProjectInsights(
             preloadedInsightsRaw.filter(
               (candidate): candidate is Insight =>
                 Boolean(candidate) &&
@@ -782,7 +1018,7 @@ export function ApprovalReviewPanel({
                 !Array.isArray(candidate) &&
                 typeof (candidate as Insight).insight_id === 'string'
             )
-          );
+          ));
         }
         return;
       }
@@ -790,11 +1026,11 @@ export function ApprovalReviewPanel({
       try {
         const data = await fetchProjectInsights(insight.user_id, insight.insight_id);
         if (mounted) {
-          setProjectInsights(data);
+          replaceProjectInsights(sanitizeLoadedProjectInsights(data));
         }
       } catch (error) {
         console.error('Failed to fetch project insights', error);
-        if (mounted) setProjectInsights([]);
+        if (mounted) replaceProjectInsights([]);
       }
     }
 
@@ -819,8 +1055,9 @@ export function ApprovalReviewPanel({
 
   const activeDocName = activeDocFilter ?? null;
 
-  const formatDisplayDate = (value: string) =>
-    value ? new Date(value).toLocaleDateString() : '-';
+  function formatDisplayDate(value: string): string {
+    return value ? new Date(value).toLocaleDateString() : '-';
+  }
 
   const startEditing = (pendingInsight: Insight) => {
     setEditingId(pendingInsight.insight_id);
@@ -834,10 +1071,10 @@ export function ApprovalReviewPanel({
 
   const saveEditing = () => {
     if (!editDraft) return;
-    const nextProjectInsights = projectInsights.map((insightItem) =>
+    const nextProjectInsights = projectInsightsRef.current.map((insightItem) =>
       insightItem.insight_id === editDraft.insight_id ? editDraft : insightItem
     );
-    setProjectInsights(nextProjectInsights);
+    replaceProjectInsights(nextProjectInsights);
     setProjectMetadata((prev) => syncProjectMetadataWithInsights(prev, nextProjectInsights));
     toast.success('Changes saved');
     setEditingId(null);
@@ -845,13 +1082,17 @@ export function ApprovalReviewPanel({
   };
 
   const updateReviewStatus = (insightId: string, nextStatus: 'pending' | 'approved' | 'declined') => {
-    setProjectInsights((prev) =>
-      prev.map((insightItem) => 
+    if (nextStatus === 'pending') {
+      reviewStatusOverridesRef.current.delete(insightId);
+    } else {
+      reviewStatusOverridesRef.current.set(insightId, nextStatus);
+    }
+    const nextProjectInsights = projectInsightsRef.current.map((insightItem) =>
         insightItem.insight_id === insightId
           ? setReviewStatusForInsight(insightItem, nextStatus)
           : insightItem
-      )
     );
+    replaceProjectInsights(nextProjectInsights);
   };
 
   const addCustomField = () => {
@@ -882,7 +1123,10 @@ export function ApprovalReviewPanel({
       return;
     }
 
-    const loadedCurrentInsight = projectInsights.find((item) => item.insight_id === insight.insight_id);
+    const latestProjectInsights = projectInsightsRef.current;
+    const loadedCurrentInsight = latestProjectInsights.find(
+      (item) => item.insight_id === insight.insight_id
+    );
     const currentInsight: Insight = {
       ...(loadedCurrentInsight ?? insight),
       ...insight,
@@ -891,10 +1135,23 @@ export function ApprovalReviewPanel({
       status: decision,
     };
 
-    const combinedInsights = [...projectInsights, currentInsight];
+    const reviewedProjectInsights = latestProjectInsights.map((item) => {
+      const statusOverride = reviewStatusOverridesRef.current.get(item.insight_id);
+      const effectiveReviewStatus = statusOverride ?? reviewStatusForInsight(item);
+      const nextReviewStatus =
+        decision === 'Declined'
+          ? 'declined'
+          : effectiveReviewStatus === 'declined'
+            ? 'declined'
+            : 'approved';
+      return setReviewStatusForInsight(item, nextReviewStatus);
+    });
+
+    const combinedInsights = [...reviewedProjectInsights, currentInsight];
     const uniqueInsights = Array.from(
       new Map(combinedInsights.map((item) => [item.insight_id, stripTransientProjectContext(item)])).values()
     );
+    replaceProjectInsights(reviewedProjectInsights);
 
     try {
       if (decision === 'Approved') {
@@ -902,7 +1159,12 @@ export function ApprovalReviewPanel({
       } else {
         setIsDeclining(true);
       }
+      const declinedUniqueInsightIds = uniqueInsights
+        .filter((item) => item.status?.toLowerCase() === 'declined')
+        .map((item) => item.insight_id);
+      console.log('[approval-review] affirmative declined uniqueInsights ids', declinedUniqueInsightIds);
       await acceptInsights(insight.insight_id, uniqueInsights);
+      reviewStatusOverridesRef.current = new Map();
       if (decision === 'Approved') {
         toast.success('Insight approved');
         onApprove();
@@ -949,8 +1211,10 @@ export function ApprovalReviewPanel({
 
     if (!normalizedTagKey || normalizedTagKey === 'team') return;
 
-    setProjectInsights((prev) =>
-      prev.map((insightItem) => removeMetadataTagFromInsight(insightItem, normalizedTagKey))
+    replaceProjectInsights(
+      projectInsightsRef.current.map((insightItem) =>
+        removeMetadataTagFromInsight(insightItem, normalizedTagKey)
+      )
     );
     setEditDraft((prev) =>
       prev ? removeMetadataTagFromInsight(prev, normalizedTagKey) : prev
@@ -1026,6 +1290,12 @@ export function ApprovalReviewPanel({
           <div>
             <p className="text-xs text-gray-500">Document</p>
             <p className="text-sm font-medium text-gray-900">{insight.document_id}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">Created At</p>
+            <p className="text-sm font-medium text-gray-900">
+              {projectCreatedAt ? formatDisplayDate(projectCreatedAt) : '-'}
+            </p>
           </div>
           <div>
             <p className="text-xs text-gray-500">Insight ID</p>

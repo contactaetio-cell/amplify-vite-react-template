@@ -627,14 +627,7 @@ export function InsightDetail({ insightId, onBack, onViewRelated, forceEditMode 
           return;
         }
 
-        const treeRootInsight = tree.insight[0];
-        const rootInsight =
-          detail?.insight && detail.insight.insight_id === treeRootInsight.insight_id
-            ? {
-                ...treeRootInsight,
-                ...detail.insight,
-              }
-            : treeRootInsight;
+        const rootInsight = tree.insight[0];
         setRootInsight(rootInsight);
         setInsightData(tree.data ?? null);
         const mappedChildren = tree.children.map((child) => mapBackendInsightToUiInsight(child));

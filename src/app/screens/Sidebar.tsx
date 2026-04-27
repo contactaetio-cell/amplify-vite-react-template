@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, Upload, HelpCircle, Settings, PanelLeftClose, PanelLeft, LogOut } from 'lucide-react';
+import { LayoutDashboard, Upload, HelpCircle, Settings, PanelLeftClose, PanelLeft, LogOut, ShieldCheck } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { fetchUserAttributes, signOut } from "aws-amplify/auth";
 import { useNavigate } from 'react-router';
@@ -12,6 +12,7 @@ interface SidebarProps {
 const navItems = [
   { id: 'home', label: 'Home', icon: LayoutDashboard },
   { id: 'ingestion', label: 'Add New Insights', icon: Upload },
+  { id: 'admin-evals', label: 'Admin Evals', icon: ShieldCheck },
   { id: 'help', label: 'Help', icon: HelpCircle },
   { id: 'settings', label: 'Settings', icon: Settings }
 ];

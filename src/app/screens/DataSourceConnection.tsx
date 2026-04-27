@@ -30,8 +30,8 @@ function toProjectRootInsight(project: ProjectRecord): Insight {
     evidence_snippet: project.research_context?.trim() || 'Project review',
     s3_node: `project:${project.project_id}`,
     document_id: project.project_id,
-    createdAt: project.created_at,
-    updatedAt: project.updated_at,
+    createdAt: project.createdAt ?? project.created_at,
+    updatedAt: project.updatedAt ?? project.updated_at,
     upload_mode: project.upload_mode,
     context_urls: project.context_urls ?? [],
     output_urls: project.output_urls ?? [],
@@ -105,6 +105,11 @@ export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSour
       return;
     }
 
+    // Avoid polling while actively reviewing a specific project to prevent local review-state resets.
+    if (activeTab === 'approval' && typeof insightId === 'string' && insightId.trim().length > 0) {
+      return;
+    }
+
     const intervalId = window.setInterval(() => {
       void loadQueueData({ silent: true });
     }, 15000);
@@ -112,7 +117,7 @@ export function DataSourceConnection({ onSelectSource, onManualEntry }: DataSour
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [activeTab, loadQueueData]);
+  }, [activeTab, insightId, loadQueueData]);
 
   return (
     <div className="flex-1 overflow-auto bg-gray-50">
